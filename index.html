@@ -245,14 +245,12 @@
     <div class="card">
       <details class="manual">
         <summary class="manual-btn">🔍 Stok Sorgula</summary>
+        <button type="button" class="scan-btn" onclick="openScanner('stok')">📷 Barkod Tara</button>
         <div class="field">
           <label>Barkod, ürün kodu ya da ürün adı (anahtar kelime)</label>
           <input type="text" id="sq-input" autocomplete="off" placeholder="Örn. Gebze ihl, ya da barkod tarayın">
         </div>
-        <div class="row2">
-          <button type="button" class="submit-btn" onclick="startStockQuery()">Sorgula</button>
-          <button type="button" class="scan-btn" style="margin-top:4px;" onclick="openScanner('stok')">📷 Barkod Tara</button>
-        </div>
+        <button type="button" class="submit-btn" onclick="startStockQuery()">Sorgula</button>
         <div id="sq-result" style="margin-top:14px;"></div>
       </details>
     </div>
