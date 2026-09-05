@@ -266,8 +266,8 @@
       <details class="manual">
         <summary class="manual-btn">🔍 Stok Sorgula</summary>
         <div class="field">
-          <label>Barkod veya ürün kodu</label>
-          <input type="text" id="sq-input" autocomplete="off" placeholder="Yazın ya da barkod tarayın">
+          <label>Barkod, ürün kodu ya da ürün adı (anahtar kelime)</label>
+          <input type="text" id="sq-input" autocomplete="off" placeholder="Örn. Gebze ihl, ya da barkod tarayın">
         </div>
         <div class="row2">
           <button type="button" class="submit-btn" onclick="startStockQuery()">Sorgula</button>
@@ -450,7 +450,6 @@ async function openScanner(mode){
 
   try{
     await loadZXing();
-    if(scannerMode === 'manual') await loadBarcodeDictionary();
     const videoEl = document.getElementById('scanner-video');
     zxingReader = new ZXing.BrowserMultiFormatReader();
     statusEl.textContent = 'Barkodu kameraya gösterin...';
@@ -473,22 +472,26 @@ function closeScanner(){
   document.getElementById('scanner-overlay').style.display = 'none';
 }
 
-function handleScanResult(code){
+async function handleScanResult(code){
   closeScanner();
   if(scannerMode === 'stok'){
     document.getElementById('sq-input').value = code;
     startStockQuery();
     return;
   }
-  const match = barcodeDictionary[String(code)];
-  if(match){
-    document.getElementById('f-kod').value = match.urunKodu || code;
-    document.getElementById('f-ad').value = match.urunAdi || '';
-    document.getElementById('f-beden').value = match.beden || '';
-    showToast('Ürün tanındı: ' + (match.urunAdi || code));
+
+  document.getElementById('f-kod').value = code;
+  showToast('Wolvox\'ta aranıyor...');
+  const outcome = await requestWolvoxLookup(code);
+  const results = outcome.results || [];
+  if(!outcome.hata && results.length > 0){
+    const p = results[0];
+    document.getElementById('f-kod').value = p.urunKodu || code;
+    document.getElementById('f-ad').value = p.urunAdi || '';
+    document.getElementById('f-beden').value = p.beden || '';
+    showToast('Ürün tanındı: ' + (p.urunAdi || code));
   }else{
-    document.getElementById('f-kod').value = code;
-    showToast('Bu barkod ilk kez görülüyor, ürün adını elle girin');
+    showToast('Bu barkod Wolvox\'ta bulunamadı, ürün adını elle girin');
   }
   document.getElementById('f-ad').focus();
 }
@@ -592,60 +595,73 @@ function setView(v){
   render();
 }
 
+function requestWolvoxLookup(query){
+  return new Promise(async (resolve) => {
+    try{
+      const res = await fetch(WEBAPP_URL, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({action:'lookupRequest', barkod: query})
+      });
+      const data = await res.json();
+      if(!data.id){ resolve({hata:'Sorgu başlatılamadı'}); return; }
+      pollWolvoxLookup(data.id, 0, resolve);
+    }catch(e){
+      resolve({hata:'Sorgu gönderilemedi, bağlantıyı kontrol edin.'});
+    }
+  });
+}
+
+function pollWolvoxLookup(id, attempt, resolve){
+  if(attempt > 20){ resolve({hata:'Zaman aşımı — depo bilgisayarındaki program çalışmıyor olabilir.'}); return; }
+  fetch(WEBAPP_URL + '?type=lookupStatus&id=' + encodeURIComponent(id))
+    .then(res => res.json())
+    .then(data => {
+      if(data.durum === 'tamamlandi'){
+        if(data.hata){ resolve({hata: data.hata}); return; }
+        let results = [];
+        try{ results = JSON.parse(data.sonucJSON || '[]'); }catch(e){}
+        resolve({results});
+      }else{
+        setTimeout(() => pollWolvoxLookup(id, attempt + 1, resolve), 2000);
+      }
+    })
+    .catch(() => setTimeout(() => pollWolvoxLookup(id, attempt + 1, resolve), 2000));
+}
+
+function stockResultCard(p){
+  const stokSayi = Number(p.stok) || 0;
+  const renkli = stokSayi > 0 ? 'var(--green)' : 'var(--red)';
+  return `
+    <div class="item st-hazir" style="margin-bottom:10px;">
+      <div class="item-name">${escapeHtml(p.urunAdi || '—')}</div>
+      <div class="item-meta">${escapeHtml(p.urunKodu || '—')} ${p.beden ? '· ' + escapeHtml(p.beden) : ''} ${p.renk ? '· ' + escapeHtml(p.renk) : ''}</div>
+      <div style="margin-top:10px;font-size:15px;font-weight:800;color:${renkli};">${stokSayi} adet stokta</div>
+    </div>
+  `;
+}
+
 async function startStockQuery(){
-  const barkod = document.getElementById('sq-input').value.trim();
+  const query = document.getElementById('sq-input').value.trim();
   const resultEl = document.getElementById('sq-result');
-  if(!barkod){
-    resultEl.innerHTML = `<div class="empty">Bir barkod ya da ürün kodu girin.</div>`;
+  if(!query){
+    resultEl.innerHTML = `<div class="empty">Barkod, ürün kodu ya da ürünle ilgili birkaç kelime yazın.</div>`;
     return;
   }
 
   resultEl.innerHTML = `<div class="empty">🔎 Wolvox'ta sorgulanıyor, birkaç saniye sürebilir...</div>`;
 
-  try{
-    const res = await fetch(WEBAPP_URL, {
-      method:'POST',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({action:'lookupRequest', barkod})
-    });
-    const data = await res.json();
-    if(!data.id){
-      resultEl.innerHTML = `<div class="empty">Sorgu başlatılamadı, tekrar deneyin.</div>`;
-      return;
-    }
-    pollStockQuery(data.id, 0);
-  }catch(e){
-    resultEl.innerHTML = `<div class="empty">Sorgu gönderilemedi, bağlantıyı kontrol edin.</div>`;
-  }
-}
-
-async function pollStockQuery(id, attempt){
-  const resultEl = document.getElementById('sq-result');
-  if(attempt > 20){
-    resultEl.innerHTML = `<div class="empty">Zaman aşımı — depo bilgisayarındaki program çalışmıyor olabilir.</div>`;
+  const outcome = await requestWolvoxLookup(query);
+  if(outcome.hata){
+    resultEl.innerHTML = `<div class="empty">❌ ${escapeHtml(outcome.hata)}</div>`;
     return;
   }
-  try{
-    const res = await fetch(WEBAPP_URL + '?type=lookupStatus&id=' + encodeURIComponent(id));
-    const data = await res.json();
-    if(data.durum === 'tamamlandi'){
-      if(data.hata){
-        resultEl.innerHTML = `<div class="empty">❌ ${escapeHtml(data.hata)}</div>`;
-      }else{
-        const stokSayi = Number(data.sonucStok) || 0;
-        const renkli = stokSayi > 0 ? 'var(--green)' : 'var(--red)';
-        resultEl.innerHTML = `
-          <div class="item st-hazir">
-            <div class="item-name">${escapeHtml(data.sonucAd || '—')}</div>
-            <div class="item-meta">${escapeHtml(data.sonucKod || '—')} ${data.sonucBeden ? '· ' + escapeHtml(data.sonucBeden) : ''} ${data.sonucRenk ? '· ' + escapeHtml(data.sonucRenk) : ''}</div>
-            <div style="margin-top:10px;font-size:15px;font-weight:800;color:${renkli};">${stokSayi} adet stokta</div>
-          </div>
-        `;
-      }
-      return;
-    }
-  }catch(e){}
-  setTimeout(() => pollStockQuery(id, attempt + 1), 2000);
+  const results = outcome.results || [];
+  if(results.length === 0){
+    resultEl.innerHTML = `<div class="empty">Sonuç bulunamadı.</div>`;
+  }else{
+    resultEl.innerHTML = results.map(stockResultCard).join('');
+  }
 }
 
 async function submitSale(isAcil){
