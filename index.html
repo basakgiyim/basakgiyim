@@ -414,6 +414,7 @@ function matchesSearch(r, query){
 let barcodeDictionary = {};
 let zxingReader = null;
 let scannerMode = 'manual';
+let scanLocked = false;
 
 function loadZXing(){
   return new Promise((resolve, reject) => {
@@ -442,6 +443,7 @@ async function loadBarcodeDictionary(){
 
 async function openScanner(mode){
   scannerMode = mode || 'manual';
+  scanLocked = false;
   const overlay = document.getElementById('scanner-overlay');
   const statusEl = document.getElementById('scanner-status');
   overlay.style.display = 'block';
@@ -454,8 +456,11 @@ async function openScanner(mode){
     zxingReader = new ZXing.BrowserMultiFormatReader();
     statusEl.textContent = 'Barkodu kameraya gösterin...';
     zxingReader.decodeFromVideoDevice(undefined, videoEl, (result, err) => {
-      if(result){
-        handleScanResult(result.getText());
+      if(result && !scanLocked){
+        scanLocked = true;
+        const code = result.getText();
+        closeScanner();
+        handleScanResult(code);
       }
     });
   }catch(e){
@@ -473,7 +478,6 @@ function closeScanner(){
 }
 
 async function handleScanResult(code){
-  closeScanner();
   if(scannerMode === 'stok'){
     document.getElementById('sq-input').value = code;
     startStockQuery();
