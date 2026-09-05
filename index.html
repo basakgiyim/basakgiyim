@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Başak Giyim — Depo Sevkiyat Takip</title>
+<style>
+  :root{
+    --navy:#1F3A5F;
+    --navy-dark:#152B47;
+    --gold:#C99A3B;
+    --amber:#E0A458;
+    --amber-bg:#FBF0E1;
+    --blue:#2E6EA5;
+    --blue-bg:#E7F0F9;
+    --green:#3F8F5F;
+    --green-bg:#E8F5EC;
+    --bg:#F7F5F1;
+    --card:#FFFFFF;
+    --text:#20242C;
+    --text-dim:#6B7280;
+    --border:#E4E1DA;
+    --red:#B5482F;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:40px;
+  }
+  header{
+    background:var(--navy);
+    color:#fff;
+    padding:18px 20px 16px;
+    position:sticky;
+    top:0;
+    z-index:10;
+    box-shadow:0 2px 10px rgba(0,0,0,0.12);
+  }
+  header h1{margin:0;font-size:17px;font-weight:700;}
+  .status-row{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin:3px 0 14px;
+    font-size:12px;
+    color:#B9C6D8;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:#7CC98A;flex:0 0 auto;}
+  .dot.off{background:#D96A55;}
+  .tabs{display:flex;gap:8px;background:rgba(255,255,255,0.08);padding:4px;border-radius:11px;}
+  .tab-btn{flex:1;border:none;background:transparent;color:#C9D4E2;padding:10px 8px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
+  .tab-btn.active{background:var(--gold);color:#2A1E05;}
+  main{max-width:520px;margin:0 auto;padding:18px 16px 0;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px;}
+  .card h2{margin:0 0 14px;font-size:15px;font-weight:700;color:var(--navy);}
+  .list-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .list-title h2{margin:0;}
+  .count-badge{background:var(--amber);color:#3A2400;font-size:12px;font-weight:700;padding:2px 9px;border-radius:20px;}
+  .count-badge.pulse{animation:pulse 1s ease-in-out 2;}
+  @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.18);}}
+
+  .item{border:1.5px solid var(--border);border-radius:11px;padding:13px 14px;margin-bottom:10px;}
+  .item.st-bekliyor{border-left:5px solid var(--amber);background:var(--amber-bg);}
+  .item.st-hazir{border-left:5px solid var(--blue);background:var(--blue-bg);}
+  .item.st-teslim{border-left:5px solid var(--green);background:var(--green-bg);}
+  .item.st-tukendi{border-left:5px solid var(--red);background:#FBEAE4;}
+  .item-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .item-name{font-size:14.5px;font-weight:700;color:var(--text);}
+  .item-meta{font-size:12.5px;color:var(--text-dim);margin-top:2px;}
+  .item-note{font-size:12.5px;color:var(--text-dim);margin-top:4px;font-style:italic;}
+  .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+  .badge.st-bekliyor{background:var(--amber);color:#3A2400;}
+  .badge.st-hazir{background:var(--blue);color:#fff;}
+  .badge.st-teslim{background:var(--green);color:#fff;}
+  .badge.st-tukendi{background:var(--red);color:#fff;}
+  .item-time{font-size:11px;color:var(--text-dim);margin-top:8px;}
+  .item-actions{display:flex;gap:8px;margin-top:11px;}
+  .action-btn{flex:1;padding:9px;border-radius:8px;border:none;font-size:13px;font-weight:700;cursor:pointer;}
+  .action-btn.ready{background:var(--blue);color:#fff;}
+  .action-btn.delivered{background:var(--green);color:#fff;}
+  .action-btn.outofstock{background:var(--red);color:#fff;}
+  .action-btn.undo{background:var(--gold);color:#2A1E05;}
+  .action-btn.del{background:transparent;color:var(--red);border:1.5px solid #E7C9BE;flex:0 0 auto;padding:9px 12px;}
+  .empty{text-align:center;padding:30px 10px;color:var(--text-dim);font-size:13.5px;}
+
+  details.manual{margin-top:0;}
+  .manual-btn{
+    cursor:pointer;
+    list-style:none;
+    display:block;
+    text-align:center;
+    font-size:14px;
+    font-weight:700;
+    color:var(--navy);
+    background:#F0F3F7;
+    border:1.5px dashed var(--border);
+    border-radius:9px;
+    padding:12px;
+  }
+  .manual-btn::-webkit-details-marker{display:none;}
+  .field{margin-bottom:12px;margin-top:12px;}
+  details.manual .field:first-of-type{margin-top:16px;}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--text-dim);margin:0 0 5px;}
+  input[type=text], input[type=number]{
+    width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;
+    font-size:15px;font-family:inherit;background:#FCFBF9;color:var(--text);
+  }
+  input:focus{outline:none;border-color:var(--gold);background:#fff;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .submit-btn{width:100%;padding:13px;border:none;border-radius:9px;background:var(--navy);color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;}
+  .submit-btn:disabled{opacity:0.5;}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--navy-dark);color:#fff;padding:11px 20px;border-radius:30px;font-size:13.5px;font-weight:600;opacity:0;transition:all .25s ease;pointer-events:none;z-index:50;white-space:nowrap;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .link-hint{background:#FFF7E8;border:1px solid #F0DDAE;border-radius:10px;padding:11px 13px;font-size:12.5px;color:#6B5117;margin-bottom:16px;}
+
+  .filter-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;}
+  .filter-chip{
+    border:1.5px solid var(--border);
+    background:#FCFBF9;
+    color:var(--text-dim);
+    padding:7px 12px;
+    border-radius:20px;
+    font-size:12.5px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .filter-chip.active{background:var(--navy);border-color:var(--navy);color:#fff;}
+
+  .search-box{
+    width:100%;
+    padding:10px 12px;
+    border:1.5px solid var(--border);
+    border-radius:9px;
+    font-size:14px;
+    font-family:inherit;
+    background:#FCFBF9;
+    color:var(--text);
+    margin-top:10px;
+  }
+  .search-box:focus{outline:none;border-color:var(--gold);background:#fff;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Başak Giyim</h1>
+  <div class="status-row">
+    <span class="dot" id="status-dot"></span>
+    <span id="status-text">Bağlanıyor...</span>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn" id="tab-magaza" onclick="setView('magaza')">🏬 Mağaza</button>
+    <button class="tab-btn" id="tab-depo" onclick="setView('depo')">📦 Depo</button>
+  </div>
+</header>
+
+<main>
+
+  <section id="view-magaza">
+    <div class="card">
+      <details class="manual">
+        <summary class="manual-btn">+ Elle satış ekle (EKSİK ÜRÜN GİRİŞİ)</summary>
+        <div class="field">
+          <label>Ürün kodu / barkod</label>
+          <input type="text" id="f-kod" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Ürün adı</label>
+          <input type="text" id="f-ad" autocomplete="off">
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Beden / özellik</label>
+            <input type="text" id="f-beden" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>Adet</label>
+            <input type="number" id="f-adet" value="1" min="1" inputmode="numeric">
+          </div>
+        </div>
+        <button class="submit-btn" id="submit-btn" onclick="submitSale()">Depoya gönder</button>
+      </details>
+    </div>
+
+    <div class="card">
+      <div class="filter-row" id="kademe-filters-magaza"></div>
+    </div>
+
+    <div class="card">
+      <details id="hazir-details">
+        <summary style="cursor:pointer;font-size:15px;font-weight:700;color:var(--navy);">Hazır, teslim alın (<span id="hazir-count">0</span>)</summary>
+        <input type="text" class="search-box" id="search-hazir" placeholder="Ara (ürün adı, kod, fatura...)" oninput="onSearchInput('hazir', this.value)">
+        <div id="magaza-ready-list" style="margin-top:12px;"></div>
+        <button class="action-btn del" style="width:100%;padding:10px;margin-top:8px;" onclick="clearHazir()">🗑️ Hazır listesini temizle</button>
+      </details>
+    </div>
+
+    <div class="card">
+      <details id="bekleyen-details">
+        <summary style="cursor:pointer;font-size:15px;font-weight:700;color:var(--navy);">Bekleyen siparişler (<span id="bekleyen-count">0</span>)</summary>
+        <input type="text" class="search-box" id="search-bekleyen" placeholder="Ara (ürün adı, kod, fatura...)" oninput="onSearchInput('bekleyen', this.value)">
+        <div id="magaza-list" style="margin-top:12px;"></div>
+        <button class="action-btn del" style="width:100%;padding:10px;margin-top:8px;" onclick="clearBekleyen()">🗑️ Bekleyen listesini temizle</button>
+      </details>
+    </div>
+
+    <div class="card" id="tukendi-card">
+      <details id="tukendi-details">
+        <summary style="cursor:pointer;font-size:15px;font-weight:700;color:var(--navy);">Tükenmiş ürünler (<span id="tukendi-count">0</span>)</summary>
+        <input type="text" class="search-box" id="search-tukendi" placeholder="Ara (ürün adı, kod, fatura...)" oninput="onSearchInput('tukendi', this.value)">
+        <div id="magaza-tukendi-list" style="margin-top:12px;"></div>
+        <button class="action-btn del" style="width:100%;padding:10px;margin-top:8px;" id="tukendi-clear-btn" onclick="clearTukendi()">🗑️ Tükenmiş listesini temizle</button>
+      </details>
+    </div>
+
+    <div class="card">
+      <button class="action-btn del" style="width:100%;padding:11px;" id="clear-btn" onclick="clearAllRecords()">⚠️ Tüm kayıtları temizle</button>
+    </div>
+  </section>
+
+  <section id="view-depo" style="display:none;">
+    <div class="link-hint">Bu ekranı depo telefonunda açık tutun. Wolvox'ta satış yapıldığında liste otomatik güncellenir ve kısa bir ses çalar.</div>
+
+    <div class="card">
+      <div class="list-title">
+        <h2>Hazırlanacaklar</h2>
+        <span class="count-badge" id="pending-count">0</span>
+      </div>
+      <div class="filter-row" id="kademe-filters"></div>
+      <div class="filter-row" id="sort-filters"></div>
+      <input type="text" class="search-box" id="search-depo" placeholder="Ara (ürün adı, kod, fatura...)" oninput="onSearchInput('depo', this.value)">
+      <div id="depo-pending-list" style="margin-top:12px;"></div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwYvzUwohqbUppUA2A0XIaX5JioYZ_pkikf44Z71vgyC3U9Lzz6XhKW0ufCkrJ2IygoIA/exec';
+
+let allRecords = [];
+let currentView = 'magaza';
+let currentKademeFilter = 'tumu';
+let currentKademeFilterMagaza = 'tumu';
+let prevPendingCount = 0;
+let firstLoad = true;
+let connected = null;
+
+let currentSortDepo = 'saat';
+let searchDepo = '';
+let searchHazir = '';
+let searchBekleyen = '';
+let searchTukendi = '';
+
+function onSearchInput(section, value){
+  if(section === 'hazir') searchHazir = value;
+  else if(section === 'bekleyen') searchBekleyen = value;
+  else if(section === 'tukendi') searchTukendi = value;
+  else if(section === 'depo') searchDepo = value;
+  render();
+}
+
+function setSortDepo(mode){
+  currentSortDepo = mode;
+  render();
+}
+
+function matchesSearch(r, query){
+  if(!query || !query.trim()) return true;
+  const text = ((r.urunAdi||'') + ' ' + (r.urunKodu||'') + ' ' + (r.beden||'') + ' ' + (r.faturaNo||'') + ' ' + (r.depoAdi||'')).toLocaleLowerCase('tr-TR');
+  const words = query.toLocaleLowerCase('tr-TR').trim().split(/\s+/);
+  return words.every(w => text.includes(w));
+}
+
+function genId(){
+  return 'manual-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7);
+}
+
+function setStatus(ok){
+  if(connected === ok) return;
+  connected = ok;
+  document.getElementById('status-dot').classList.toggle('off', !ok);
+  document.getElementById('status-text').textContent = ok ? 'Bağlı · canlı' : 'Bağlantı sorunu';
+}
+
+async function loadAll(){
+  try{
+    const res = await fetch(WEBAPP_URL, {method:'GET'});
+    if(!res.ok) throw new Error('bad status');
+    const data = await res.json();
+    setStatus(true);
+    return data.map(r => ({
+      id: r.id,
+      zaman: Number(r.zaman) || 0,
+      urunKodu: r.urunKodu || '',
+      urunAdi: r.urunAdi || '',
+      beden: r.beden || '',
+      adet: Number(r.adet) || 1,
+      not: r.not || '',
+      durum: r.durum || 'bekliyor',
+      hazirZaman: r.hazirZaman ? Number(r.hazirZaman) : null,
+      teslimZaman: r.teslimZaman ? Number(r.teslimZaman) : null,
+      faturaNo: r.faturaNo || '',
+      depoAdi: r.depoAdi || ''
+    })).sort((a,b) => b.zaman - a.zaman);
+  }catch(e){
+    setStatus(false);
+    return null;
+  }
+}
+
+async function postAction(payload){
+  try{
+    const res = await fetch(WEBAPP_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  }catch(e){
+    return false;
+  }
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 1800);
+}
+
+function fmtTime(ts){
+  const d = new Date(ts);
+  return d.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
+}
+
+function playBell(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ringOnce = (startTime) => {
+      [880, 1046.5, 880, 1046.5].forEach((freq, i) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.type = 'sine';
+        o.frequency.value = freq;
+        const t = startTime + i * 0.18;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.28, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        o.start(t);
+        o.stop(t + 0.18);
+      });
+    };
+    const now = ctx.currentTime;
+    ringOnce(now);
+    ringOnce(now + 0.9);
+    ringOnce(now + 1.8);
+    setTimeout(() => { try{ ctx.close(); }catch(e){} }, 3200);
+  }catch(e){}
+}
+
+function setView(v){
+  currentView = v;
+  window.location.hash = v;
+  document.getElementById('view-magaza').style.display = v==='magaza' ? 'block' : 'none';
+  document.getElementById('view-depo').style.display = v==='depo' ? 'block' : 'none';
+  document.getElementById('tab-magaza').classList.toggle('active', v==='magaza');
+  document.getElementById('tab-depo').classList.toggle('active', v==='depo');
+  render();
+}
+
+async function submitSale(){
+  const kod = document.getElementById('f-kod').value.trim();
+  const ad = document.getElementById('f-ad').value.trim();
+  const beden = document.getElementById('f-beden').value.trim();
+  const adet = parseInt(document.getElementById('f-adet').value, 10) || 1;
+
+  if(!ad){ showToast('Ürün adını girin'); return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Gönderiliyor...';
+
+  const record = {
+    id: genId(), zaman: Date.now(), urunKodu: kod, urunAdi: ad,
+    beden: beden, adet: adet, not: '', durum: 'bekliyor'
+  };
+  const ok = await postAction({action:'add', record});
+
+  btn.disabled = false;
+  btn.textContent = 'Depoya gönder';
+
+  if(ok){
+    showToast('Depoya gönderildi');
+    document.getElementById('f-kod').value = '';
+    document.getElementById('f-ad').value = '';
+    document.getElementById('f-beden').value = '';
+    document.getElementById('f-adet').value = '1';
+    await poll();
+  }else{
+    showToast('Gönderilemedi, tekrar deneyin');
+  }
+}
+
+async function markReady(id){
+  const ok = await postAction({action:'updateStatus', id, durum:'hazir'});
+  if(ok){ showToast('Hazırlandı olarak işaretlendi'); await poll(); }
+  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+}
+
+async function undoTukendi(id){
+  const ok = await postAction({action:'updateStatus', id, durum:'bekliyor'});
+  if(ok){ showToast('Ürün tekrar depoya gönderildi'); await poll(); }
+  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+}
+
+async function markOutOfStock(id){
+  if(!confirm('Bu ürün tükendi olarak işaretlenecek ve mağazaya "Tükendi" diye bildirilecek. Emin misiniz?')) return;
+  const ok = await postAction({action:'updateStatus', id, durum:'tukendi'});
+  if(ok){ showToast('Tükendi olarak işaretlendi'); await poll(); }
+  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+}
+
+async function markDelivered(id){
+  const ok = await postAction({action:'updateStatus', id, durum:'teslim'});
+  if(ok){ showToast('Mağazaya ulaştı olarak işaretlendi'); await poll(); }
+  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+}
+
+async function deleteRecord(id){
+  const ok = await postAction({action:'delete', id});
+  if(ok){ showToast('Kayıt silindi'); await poll(); }
+  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+}
+
+async function clearSection(durumValue, sectionLabel){
+  const inCat = currentKademeFilterMagaza === 'tumu' ? null : currentKademeFilterMagaza;
+  const catLabel = inCat ? KADEME_LABELS[inCat] : 'Tümü';
+  const confirmMsg = inCat
+    ? `Sadece "${catLabel}" kategorisindeki "${sectionLabel}" kayıtları silinecek. Emin misiniz?`
+    : `"${sectionLabel}" listesindeki tüm kayıtlar silinecek. Emin misiniz?`;
+  if(!confirm(confirmMsg)) return;
+
+  const sifre = prompt('Devam etmek için şifreyi girin:');
+  if(sifre === null) return;
+  if(sifre !== '5737'){
+    showToast('Yanlış şifre, işlem iptal edildi');
+    return;
+  }
+
+  const targets = allRecords.filter(r => r.durum===durumValue && (!inCat || detectKademe(r)===inCat));
+  let ok = 0;
+  for(const r of targets){
+    const success = await postAction({action:'delete', id:r.id});
+    if(success) ok++;
+  }
+  showToast(`${sectionLabel}: ${ok} kayıt temizlendi`);
+  await poll();
+}
+
+async function clearHazir(){ await clearSection('hazir', 'Hazır, teslim alın'); }
+async function clearBekleyen(){ await clearSection('bekliyor', 'Bekleyen siparişler'); }
+async function clearTukendi(){ await clearSection('tukendi', 'Tükenmiş ürünler'); }
+
+async function clearAllRecords(){
+  const label = KADEME_LABELS[currentKademeFilterMagaza];
+  const confirmMsg = currentKademeFilterMagaza === 'tumu'
+    ? 'Tüm satış kayıtları silinecek (Wolvox\'taki satışlarınız etkilenmez, sadece bu takip listesi temizlenir). Emin misiniz?'
+    : `Sadece "${label}" kategorisindeki kayıtlar silinecek. Emin misiniz?`;
+  if(!confirm(confirmMsg)) return;
+
+  const sifre = prompt('Devam etmek için şifreyi girin:');
+  if(sifre === null) return;
+  if(sifre !== '5737'){
+    showToast('Yanlış şifre, işlem iptal edildi');
+    return;
+  }
+
+  if(currentKademeFilterMagaza === 'tumu'){
+    const ok = await postAction({action:'clearAll'});
+    if(ok){ showToast('Tüm kayıtlar temizlendi'); await poll(); }
+    else{ showToast('İşlem başarısız, tekrar deneyin'); }
+  }else{
+    const targets = allRecords.filter(r => detectKademe(r) === currentKademeFilterMagaza);
+    let ok = 0;
+    for(const r of targets){
+      const success = await postAction({action:'delete', id:r.id});
+      if(success) ok++;
+    }
+    showToast(`${label}: ${ok} kayıt temizlendi`);
+    await poll();
+  }
+}
+
+const KADEME_LABELS = {
+  tumu: 'Tümü', ilkokul: 'İlkokul', ortaokul: 'Ortaokul', lise: 'Lise',
+  penye: 'Penye', destan: 'Destan', diger: 'Diğer'
+};
+const KADEME_KEYS = ['tumu','ilkokul','ortaokul','lise','penye','destan','diger'];
+
+function extractAgeRanges(text){
+  const ranges = [];
+  const rangeRe = /(\d{1,2})\s*[-\/\\]\s*(\d{1,2})\s*y[a-zçğıöşü]*/gi;
+  let m;
+  while((m = rangeRe.exec(text)) !== null){
+    ranges.push([parseInt(m[1],10), parseInt(m[2],10)]);
+  }
+  const strippedText = text.replace(rangeRe, ' ');
+  const singleRe = /\b(\d{1,2})\s*y[a-zçğıöşü]*/gi;
+  let m2;
+  while((m2 = singleRe.exec(strippedText)) !== null){
+    const n = parseInt(m2[1],10);
+    ranges.push([n, n]);
+  }
+  return ranges;
+}
+
+function ageOverlapsIlkokul(ranges){
+  return ranges.some(([a,b]) => {
+    const lo = Math.min(a,b), hi = Math.max(a,b);
+    return lo <= 10 && hi >= 5;
+  });
+}
+
+function detectKademe(r){
+  const text = ((r.urunAdi||'') + ' ' + (r.beden||'')).toLocaleLowerCase('tr-TR');
+  if(/\blise\b/.test(text) || /\bihl\b/.test(text)) return 'lise';
+  if(/\bortaokul\b/.test(text) || /\borta okul\b/.test(text) || /\biho\b/.test(text) || /\borta\b/.test(text)) return 'ortaokul';
+  if(/\bilkokul\b/.test(text) || /\bilköğretim\b/.test(text) || /\bilk\b/.test(text) || text.includes('namık kemal')) return 'ilkokul';
+  if(ageOverlapsIlkokul(extractAgeRanges(text))) return 'ilkokul';
+  if(/\bpenye\b/.test(text)) return 'penye';
+  if(/\bdestan\b/.test(text)) return 'destan';
+  return 'diger';
+}
+
+function setKademeFilter(k){
+  currentKademeFilter = k;
+  render();
+}
+
+function setKademeFilterMagaza(k){
+  currentKademeFilterMagaza = k;
+  render();
+}
+
+function renderFilterChipsInto(containerId, records, activeFilter, setterName){
+  const counts = {};
+  KADEME_KEYS.forEach(k => counts[k] = 0);
+  counts.tumu = records.length;
+  records.forEach(r => { counts[detectKademe(r)]++; });
+  document.getElementById(containerId).innerHTML = KADEME_KEYS.map(key =>
+    `<button class="filter-chip ${activeFilter===key ? 'active' : ''}" onclick="${setterName}('${key}')">${KADEME_LABELS[key]} (${counts[key]})</button>`
+  ).join('');
+}
+
+function statusLabel(s){
+  if(s==='bekliyor') return 'Bekliyor';
+  if(s==='hazir') return 'Hazırlandı';
+  if(s==='teslim') return 'Mağazada';
+  if(s==='tukendi') return 'Tükendi';
+  return s;
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function itemHTML(r, opts){
+  opts = opts || {};
+  let actions = '';
+  if(opts.showReadyAction) actions += `<button class="action-btn ready" onclick="markReady('${r.id}')">Hazırlandı ✓</button>`;
+  if(opts.showOutOfStockAction) actions += `<button class="action-btn outofstock" onclick="markOutOfStock('${r.id}')">Tükendi ✕</button>`;
+  if(opts.showUndoAction) actions += `<button class="action-btn undo" onclick="undoTukendi('${r.id}')">↩️ Geri Al</button>`;
+  if(opts.showDeliveredAction) actions += `<button class="action-btn delivered" onclick="markDelivered('${r.id}')">Mağazaya ulaştı ✓</button>`;
+  if(opts.showDelete) actions += `<button class="action-btn del" onclick="deleteRecord('${r.id}')" title="Sil">✕</button>`;
+
+  const kaynak = r.faturaNo ? ` · Fatura ${escapeHtml(r.faturaNo)}` : '';
+
+  return `
+    <div class="item st-${r.durum}">
+      <div class="item-top">
+        <div>
+          <div class="item-name">${escapeHtml(r.urunAdi)}</div>
+          <div class="item-meta">${escapeHtml(r.urunKodu || '—')} ${r.beden ? '· ' + escapeHtml(r.beden) : ''} · ${r.adet} adet${kaynak}</div>
+        </div>
+        <span class="badge st-${r.durum}">${statusLabel(r.durum)}</span>
+      </div>
+      <div class="item-time">${fmtTime(r.zaman)} girildi${r.hazirZaman ? ' · ' + fmtTime(r.hazirZaman) + ' hazırlandı' : ''}${r.teslimZaman ? ' · ' + fmtTime(r.teslimZaman) + ' ulaştı' : ''}</div>
+      ${actions ? `<div class="item-actions">${actions}</div>` : ''}
+    </div>
+  `;
+}
+
+function render(){
+  if(currentView === 'magaza'){
+    const relevantRecords = allRecords.filter(r => r.durum !== 'teslim');
+    renderFilterChipsInto('kademe-filters-magaza', relevantRecords, currentKademeFilterMagaza, 'setKademeFilterMagaza');
+    const inCategory = r => currentKademeFilterMagaza === 'tumu' || detectKademe(r) === currentKademeFilterMagaza;
+
+    const readyItems = allRecords.filter(r => r.durum==='hazir' && inCategory(r) && matchesSearch(r, searchHazir));
+    document.getElementById('hazir-count').textContent = readyItems.length;
+    const readyList = document.getElementById('magaza-ready-list');
+    readyList.innerHTML = readyItems.length === 0
+      ? `<div class="empty">Şu an teslim alınmayı bekleyen ürün yok.</div>`
+      : readyItems.map(r => itemHTML(r, {showDeliveredAction:true})).join('');
+
+    const tukendiItems = allRecords.filter(r => r.durum==='tukendi' && inCategory(r) && matchesSearch(r, searchTukendi));
+    document.getElementById('tukendi-count').textContent = tukendiItems.length;
+    document.getElementById('magaza-tukendi-list').innerHTML = tukendiItems.length === 0
+      ? `<div class="empty">Tükenmiş ürün yok.</div>`
+      : tukendiItems.map(r => itemHTML(r, {showUndoAction:true, showDelete:true})).join('');
+
+    const pendingItems = allRecords.filter(r => r.durum==='bekliyor' && inCategory(r) && matchesSearch(r, searchBekleyen));
+    document.getElementById('bekleyen-count').textContent = pendingItems.length;
+    const list = document.getElementById('magaza-list');
+    if(pendingItems.length === 0){
+      list.innerHTML = `<div class="empty">${allRecords.length === 0 ? 'Henüz satış yok. Wolvox\'ta yapılan satışlar burada otomatik görünecek.' : 'Bu kategoride bekleyen kayıt yok.'}</div>`;
+    }else{
+      list.innerHTML = pendingItems.slice(0, 60).map(r => itemHTML(r, {showDelete:true})).join('');
+    }
+
+    const clearBtn = document.getElementById('clear-btn');
+    if(clearBtn){
+      clearBtn.textContent = currentKademeFilterMagaza === 'tumu'
+        ? '⚠️ Tüm kayıtları temizle'
+        : `⚠️ "${KADEME_LABELS[currentKademeFilterMagaza]}" kayıtlarını temizle`;
+    }
+  }else{
+    const pending = allRecords.filter(r=>r.durum==='bekliyor');
+
+    const pendingCountEl = document.getElementById('pending-count');
+    pendingCountEl.textContent = pending.length;
+    if(!firstLoad && pending.length > prevPendingCount){
+      pendingCountEl.classList.remove('pulse');
+      void pendingCountEl.offsetWidth;
+      pendingCountEl.classList.add('pulse');
+      if(currentView === 'depo') playBell();
+    }
+    prevPendingCount = pending.length;
+
+    renderFilterChipsInto('kademe-filters', pending, currentKademeFilter, 'setKademeFilter');
+
+    document.getElementById('sort-filters').innerHTML = `
+      <button class="filter-chip ${currentSortDepo==='saat' ? 'active' : ''}" onclick="setSortDepo('saat')">🕒 Saate göre</button>
+      <button class="filter-chip ${currentSortDepo==='alfabe' ? 'active' : ''}" onclick="setSortDepo('alfabe')">🔤 Alfabetik (A-Z)</button>
+    `;
+
+    let filteredPending = currentKademeFilter === 'tumu'
+      ? pending
+      : pending.filter(r => detectKademe(r) === currentKademeFilter);
+    filteredPending = filteredPending.filter(r => matchesSearch(r, searchDepo));
+
+    filteredPending = filteredPending.slice().sort((a,b) => {
+      if(currentSortDepo === 'alfabe'){
+        return (a.urunAdi||'').localeCompare((b.urunAdi||''), 'tr');
+      }
+      return a.zaman - b.zaman;
+    });
+
+    document.getElementById('depo-pending-list').innerHTML = filteredPending.length === 0
+      ? `<div class="empty">Bu kategoride bekleyen ürün yok.</div>`
+      : filteredPending.map(r => itemHTML(r, {showReadyAction:true, showOutOfStockAction:true})).join('');
+  }
+  firstLoad = false;
+}
+
+async function poll(){
+  const arr = await loadAll();
+  if(arr !== null){
+    allRecords = arr;
+    render();
+  }
+}
+
+(function init(){
+  const hash = window.location.hash.replace('#','');
+  setView(hash === 'depo' ? 'depo' : 'magaza');
+  poll();
+  setInterval(poll, 5000);
+})();
+</script>
+
+</body>
+</html>
