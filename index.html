@@ -143,6 +143,57 @@
     margin-top:10px;
   }
   .search-box:focus{outline:none;border-color:var(--gold);background:#fff;}
+
+  .scan-btn{
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:9px;
+    background:var(--gold);
+    color:#2A1E05;
+    font-size:14.5px;
+    font-weight:700;
+    cursor:pointer;
+    margin-top:16px;
+  }
+  #scanner-overlay{
+    margin-top:12px;
+    background:#000;
+    border-radius:12px;
+    overflow:hidden;
+    position:relative;
+  }
+  #scanner-video{
+    width:100%;
+    display:block;
+    max-height:320px;
+    object-fit:cover;
+  }
+  #scanner-status{
+    position:absolute;
+    bottom:44px;
+    left:0;
+    right:0;
+    text-align:center;
+    color:#fff;
+    font-size:12.5px;
+    font-weight:600;
+    text-shadow:0 1px 3px rgba(0,0,0,0.6);
+  }
+  .scan-cancel-btn{
+    position:absolute;
+    bottom:8px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(255,255,255,0.92);
+    color:var(--navy);
+    border:none;
+    padding:8px 20px;
+    border-radius:20px;
+    font-size:13px;
+    font-weight:700;
+    cursor:pointer;
+  }
 </style>
 </head>
 <body>
@@ -165,6 +216,12 @@
     <div class="card">
       <details class="manual">
         <summary class="manual-btn">+ Elle satış ekle (EKSİK ÜRÜN GİRİŞİ)</summary>
+        <button type="button" class="scan-btn" onclick="openScanner()">📷 Barkod Tara</button>
+        <div id="scanner-overlay" style="display:none;">
+          <video id="scanner-video" playsinline autoplay muted></video>
+          <div id="scanner-status">Barkodu kameraya gösterin...</div>
+          <button type="button" class="scan-cancel-btn" onclick="closeScanner()">İptal</button>
+        </div>
         <div class="field">
           <label>Ürün kodu / barkod</label>
           <input type="text" id="f-kod" autocomplete="off">
@@ -189,6 +246,7 @@
 
     <div class="card">
       <div class="filter-row" id="kademe-filters-magaza"></div>
+      <div class="filter-row" id="sort-filters-magaza" style="margin-top:8px;"></div>
     </div>
 
     <div class="card">
@@ -253,6 +311,7 @@ let prevPendingCount = 0;
 let firstLoad = true;
 let connected = null;
 
+let currentSortMagaza = 'saat';
 let currentSortDepo = 'saat';
 let searchDepo = '';
 let searchHazir = '';
@@ -272,11 +331,99 @@ function setSortDepo(mode){
   render();
 }
 
+function setSortMagaza(mode){
+  currentSortMagaza = mode;
+  render();
+}
+
+function sortRecords(list, mode){
+  return list.slice().sort((a,b) => {
+    if(mode === 'alfabe'){
+      return (a.urunAdi||'').localeCompare((b.urunAdi||''), 'tr');
+    }
+    return a.zaman - b.zaman;
+  });
+}
+
 function matchesSearch(r, query){
   if(!query || !query.trim()) return true;
   const text = ((r.urunAdi||'') + ' ' + (r.urunKodu||'') + ' ' + (r.beden||'') + ' ' + (r.faturaNo||'') + ' ' + (r.depoAdi||'')).toLocaleLowerCase('tr-TR');
   const words = query.toLocaleLowerCase('tr-TR').trim().split(/\s+/);
   return words.every(w => text.includes(w));
+}
+
+let barcodeDictionary = {};
+let zxingReader = null;
+
+function loadZXing(){
+  return new Promise((resolve, reject) => {
+    if(window.ZXing){ resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Tarayıcı kütüphanesi yüklenemedi'));
+    document.head.appendChild(s);
+  });
+}
+
+async function loadBarcodeDictionary(){
+  try{
+    const res = await fetch(WEBAPP_URL + '?type=barcodes');
+    const data = await res.json();
+    const dict = {};
+    data.forEach(row => {
+      if(row.barkod) dict[String(row.barkod)] = { urunKodu: row.urunKodu||'', urunAdi: row.urunAdi||'', beden: row.beden||'' };
+    });
+    barcodeDictionary = dict;
+  }catch(e){
+    console.error('Barkod sözlüğü yüklenemedi', e);
+  }
+}
+
+async function openScanner(){
+  const overlay = document.getElementById('scanner-overlay');
+  const statusEl = document.getElementById('scanner-status');
+  overlay.style.display = 'block';
+  statusEl.textContent = 'Kamera açılıyor...';
+
+  try{
+    await loadZXing();
+    await loadBarcodeDictionary();
+    const videoEl = document.getElementById('scanner-video');
+    zxingReader = new ZXing.BrowserMultiFormatReader();
+    statusEl.textContent = 'Barkodu kameraya gösterin...';
+    zxingReader.decodeFromVideoDevice(undefined, videoEl, (result, err) => {
+      if(result){
+        handleScanResult(result.getText());
+      }
+    });
+  }catch(e){
+    statusEl.textContent = 'Kamera açılamadı. İzin verildiğinden emin olun.';
+    showToast('Kamera açılamadı, izinleri kontrol edin');
+  }
+}
+
+function closeScanner(){
+  if(zxingReader){
+    try{ zxingReader.reset(); }catch(e){}
+    zxingReader = null;
+  }
+  document.getElementById('scanner-overlay').style.display = 'none';
+}
+
+function handleScanResult(code){
+  closeScanner();
+  const match = barcodeDictionary[String(code)];
+  if(match){
+    document.getElementById('f-kod').value = match.urunKodu || code;
+    document.getElementById('f-ad').value = match.urunAdi || '';
+    document.getElementById('f-beden').value = match.beden || '';
+    showToast('Ürün tanındı: ' + (match.urunAdi || code));
+  }else{
+    document.getElementById('f-kod').value = code;
+    showToast('Bu barkod ilk kez görülüyor, ürün adını elle girin');
+  }
+  document.getElementById('f-ad').focus();
 }
 
 function genId(){
@@ -391,7 +538,7 @@ async function submitSale(){
 
   const record = {
     id: genId(), zaman: Date.now(), urunKodu: kod, urunAdi: ad,
-    beden: beden, adet: adet, not: '', durum: 'bekliyor'
+    beden: beden, adet: adet, not: '', durum: 'bekliyor', barkod: kod
   };
   const ok = await postAction({action:'add', record});
 
@@ -532,9 +679,9 @@ function ageOverlapsIlkokul(ranges){
 
 function detectKademe(r){
   const text = ((r.urunAdi||'') + ' ' + (r.beden||'')).toLocaleLowerCase('tr-TR');
-  if(/\blise\b/.test(text) || /\bihl\b/.test(text)) return 'lise';
-  if(/\bortaokul\b/.test(text) || /\borta okul\b/.test(text) || /\biho\b/.test(text) || /\borta\b/.test(text)) return 'ortaokul';
-  if(/\bilkokul\b/.test(text) || /\bilköğretim\b/.test(text) || /\bilk\b/.test(text) || text.includes('namık kemal')) return 'ilkokul';
+  if(/\blise/.test(text) || /\bihl\b/.test(text)) return 'lise';
+  if(/\bortaokul/.test(text) || /\borta okul/.test(text) || /\biho\b/.test(text) || /\borta\b/.test(text)) return 'ortaokul';
+  if(/\bilkokul/.test(text) || /\bilköğretim/.test(text) || /\bilk\b/.test(text) || text.includes('namık kemal')) return 'ilkokul';
   if(ageOverlapsIlkokul(extractAgeRanges(text))) return 'ilkokul';
   if(/\bpenye\b/.test(text)) return 'penye';
   if(/\bdestan\b/.test(text)) return 'destan';
@@ -605,22 +752,26 @@ function render(){
   if(currentView === 'magaza'){
     const relevantRecords = allRecords.filter(r => r.durum !== 'teslim');
     renderFilterChipsInto('kademe-filters-magaza', relevantRecords, currentKademeFilterMagaza, 'setKademeFilterMagaza');
+    document.getElementById('sort-filters-magaza').innerHTML = `
+      <button class="filter-chip ${currentSortMagaza==='saat' ? 'active' : ''}" onclick="setSortMagaza('saat')">🕒 Saate göre</button>
+      <button class="filter-chip ${currentSortMagaza==='alfabe' ? 'active' : ''}" onclick="setSortMagaza('alfabe')">🔤 Alfabetik (A-Z)</button>
+    `;
     const inCategory = r => currentKademeFilterMagaza === 'tumu' || detectKademe(r) === currentKademeFilterMagaza;
 
-    const readyItems = allRecords.filter(r => r.durum==='hazir' && inCategory(r) && matchesSearch(r, searchHazir));
+    const readyItems = sortRecords(allRecords.filter(r => r.durum==='hazir' && inCategory(r) && matchesSearch(r, searchHazir)), currentSortMagaza);
     document.getElementById('hazir-count').textContent = readyItems.length;
     const readyList = document.getElementById('magaza-ready-list');
     readyList.innerHTML = readyItems.length === 0
       ? `<div class="empty">Şu an teslim alınmayı bekleyen ürün yok.</div>`
       : readyItems.map(r => itemHTML(r, {showDeliveredAction:true})).join('');
 
-    const tukendiItems = allRecords.filter(r => r.durum==='tukendi' && inCategory(r) && matchesSearch(r, searchTukendi));
+    const tukendiItems = sortRecords(allRecords.filter(r => r.durum==='tukendi' && inCategory(r) && matchesSearch(r, searchTukendi)), currentSortMagaza);
     document.getElementById('tukendi-count').textContent = tukendiItems.length;
     document.getElementById('magaza-tukendi-list').innerHTML = tukendiItems.length === 0
       ? `<div class="empty">Tükenmiş ürün yok.</div>`
       : tukendiItems.map(r => itemHTML(r, {showUndoAction:true, showDelete:true})).join('');
 
-    const pendingItems = allRecords.filter(r => r.durum==='bekliyor' && inCategory(r) && matchesSearch(r, searchBekleyen));
+    const pendingItems = sortRecords(allRecords.filter(r => r.durum==='bekliyor' && inCategory(r) && matchesSearch(r, searchBekleyen)), currentSortMagaza);
     document.getElementById('bekleyen-count').textContent = pendingItems.length;
     const list = document.getElementById('magaza-list');
     if(pendingItems.length === 0){
