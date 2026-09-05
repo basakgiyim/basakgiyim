@@ -808,8 +808,6 @@ function itemHTML(r, opts){
   if(opts.showDeliveredAction) actions += `<button class="action-btn delivered" onclick="markDelivered('${idsCsv}')">Mağazaya ulaştı ✓</button>`;
   if(opts.showDelete) actions += `<button class="action-btn del" onclick="deleteRecord('${idsCsv}')" title="Sil">✕</button>`;
 
-  const faturaCount = r.faturaNo ? r.faturaNo.split(',').filter(Boolean).length : 0;
-  const kaynak = faturaCount === 0 ? '' : faturaCount === 1 ? ` · Fatura ${escapeHtml(r.faturaNo)}` : ` · ${faturaCount} fatura`;
   const grupNotu = '';
 
   return `
@@ -817,7 +815,7 @@ function itemHTML(r, opts){
       <div class="item-top">
         <div>
           <div class="item-name">${escapeHtml(r.urunAdi)}${grupNotu}</div>
-          <div class="item-meta">${escapeHtml(r.urunKodu || '—')} ${r.beden ? '· ' + escapeHtml(r.beden) : ''} · <strong>${r.adet} adet</strong>${kaynak}</div>
+          <div class="item-meta">${escapeHtml(r.urunKodu || '—')} ${r.beden ? '· ' + escapeHtml(r.beden) : ''} · <strong>${r.adet} adet</strong></div>
         </div>
         <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:4px;">
           ${r.acil ? '<span class="acil-badge">🚨 ACİL</span>' : ''}
