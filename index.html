@@ -230,12 +230,7 @@
     <div class="card">
       <details class="manual">
         <summary class="manual-btn">+ Elle satış ekle (EKSİK ÜRÜN GİRİŞİ)</summary>
-        <button type="button" class="scan-btn" onclick="openScanner()">📷 Barkod Tara</button>
-        <div id="scanner-overlay" style="display:none;">
-          <video id="scanner-video" playsinline autoplay muted></video>
-          <div id="scanner-status">Barkodu kameraya gösterin...</div>
-          <button type="button" class="scan-cancel-btn" onclick="closeScanner()">İptal</button>
-        </div>
+        <button type="button" class="scan-btn" onclick="openScanner('manual')">📷 Barkod Tara</button>
         <div class="field">
           <label>Ürün kodu / barkod</label>
           <input type="text" id="f-kod" autocomplete="off">
@@ -258,6 +253,27 @@
           <button class="submit-btn" id="submit-btn" onclick="submitSale(false)">Depoya gönder</button>
           <button class="submit-btn acil-btn" id="submit-btn-acil" onclick="submitSale(true)">🚨 Acil Depoya Gönder</button>
         </div>
+      </details>
+    </div>
+
+    <div id="scanner-overlay" style="display:none;">
+      <video id="scanner-video" playsinline autoplay muted></video>
+      <div id="scanner-status">Barkodu kameraya gösterin...</div>
+      <button type="button" class="scan-cancel-btn" onclick="closeScanner()">İptal</button>
+    </div>
+
+    <div class="card">
+      <details class="manual">
+        <summary class="manual-btn">🔍 Stok Sorgula</summary>
+        <div class="field">
+          <label>Barkod veya ürün kodu</label>
+          <input type="text" id="sq-input" autocomplete="off" placeholder="Yazın ya da barkod tarayın">
+        </div>
+        <div class="row2">
+          <button type="button" class="submit-btn" onclick="startStockQuery()">Sorgula</button>
+          <button type="button" class="scan-btn" onclick="openScanner('stok')">📷 Barkod Tara</button>
+        </div>
+        <div id="sq-result" style="margin-top:14px;"></div>
       </details>
     </div>
 
@@ -397,6 +413,7 @@ function matchesSearch(r, query){
 
 let barcodeDictionary = {};
 let zxingReader = null;
+let scannerMode = 'manual';
 
 function loadZXing(){
   return new Promise((resolve, reject) => {
@@ -423,15 +440,17 @@ async function loadBarcodeDictionary(){
   }
 }
 
-async function openScanner(){
+async function openScanner(mode){
+  scannerMode = mode || 'manual';
   const overlay = document.getElementById('scanner-overlay');
   const statusEl = document.getElementById('scanner-status');
   overlay.style.display = 'block';
+  overlay.scrollIntoView({behavior:'smooth', block:'center'});
   statusEl.textContent = 'Kamera açılıyor...';
 
   try{
     await loadZXing();
-    await loadBarcodeDictionary();
+    if(scannerMode === 'manual') await loadBarcodeDictionary();
     const videoEl = document.getElementById('scanner-video');
     zxingReader = new ZXing.BrowserMultiFormatReader();
     statusEl.textContent = 'Barkodu kameraya gösterin...';
@@ -456,6 +475,11 @@ function closeScanner(){
 
 function handleScanResult(code){
   closeScanner();
+  if(scannerMode === 'stok'){
+    document.getElementById('sq-input').value = code;
+    startStockQuery();
+    return;
+  }
   const match = barcodeDictionary[String(code)];
   if(match){
     document.getElementById('f-kod').value = match.urunKodu || code;
@@ -566,6 +590,62 @@ function setView(v){
   document.getElementById('tab-magaza').classList.toggle('active', v==='magaza');
   document.getElementById('tab-depo').classList.toggle('active', v==='depo');
   render();
+}
+
+async function startStockQuery(){
+  const barkod = document.getElementById('sq-input').value.trim();
+  const resultEl = document.getElementById('sq-result');
+  if(!barkod){
+    resultEl.innerHTML = `<div class="empty">Bir barkod ya da ürün kodu girin.</div>`;
+    return;
+  }
+
+  resultEl.innerHTML = `<div class="empty">🔎 Wolvox'ta sorgulanıyor, birkaç saniye sürebilir...</div>`;
+
+  try{
+    const res = await fetch(WEBAPP_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'lookupRequest', barkod})
+    });
+    const data = await res.json();
+    if(!data.id){
+      resultEl.innerHTML = `<div class="empty">Sorgu başlatılamadı, tekrar deneyin.</div>`;
+      return;
+    }
+    pollStockQuery(data.id, 0);
+  }catch(e){
+    resultEl.innerHTML = `<div class="empty">Sorgu gönderilemedi, bağlantıyı kontrol edin.</div>`;
+  }
+}
+
+async function pollStockQuery(id, attempt){
+  const resultEl = document.getElementById('sq-result');
+  if(attempt > 20){
+    resultEl.innerHTML = `<div class="empty">Zaman aşımı — depo bilgisayarındaki program çalışmıyor olabilir.</div>`;
+    return;
+  }
+  try{
+    const res = await fetch(WEBAPP_URL + '?type=lookupStatus&id=' + encodeURIComponent(id));
+    const data = await res.json();
+    if(data.durum === 'tamamlandi'){
+      if(data.hata){
+        resultEl.innerHTML = `<div class="empty">❌ ${escapeHtml(data.hata)}</div>`;
+      }else{
+        const stokSayi = Number(data.sonucStok) || 0;
+        const renkli = stokSayi > 0 ? 'var(--green)' : 'var(--red)';
+        resultEl.innerHTML = `
+          <div class="item st-hazir">
+            <div class="item-name">${escapeHtml(data.sonucAd || '—')}</div>
+            <div class="item-meta">${escapeHtml(data.sonucKod || '—')} ${data.sonucBeden ? '· ' + escapeHtml(data.sonucBeden) : ''} ${data.sonucRenk ? '· ' + escapeHtml(data.sonucRenk) : ''}</div>
+            <div style="margin-top:10px;font-size:15px;font-weight:800;color:${renkli};">${stokSayi} adet stokta</div>
+          </div>
+        `;
+      }
+      return;
+    }
+  }catch(e){}
+  setTimeout(() => pollStockQuery(id, attempt + 1), 2000);
 }
 
 async function submitSale(isAcil){
