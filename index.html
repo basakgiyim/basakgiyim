@@ -87,6 +87,7 @@
   .action-btn.outofstock{background:var(--red);color:#fff;}
   .action-btn.undo{background:var(--gold);color:#2A1E05;}
   .action-btn.del{background:transparent;color:var(--red);border:1.5px solid #E7C9BE;flex:0 0 auto;padding:9px 12px;}
+  .action-btn.clear-btn{background:var(--red);color:#fff;}
   .empty{text-align:center;padding:30px 10px;color:var(--text-dim);font-size:13.5px;}
 
   details.manual{margin-top:0;}
@@ -288,7 +289,7 @@
       <details id="hazir-details">
         <summary style="cursor:pointer;font-size:15px;font-weight:700;color:var(--navy);">Hazır, teslim alın (<span id="hazir-count">0</span>)</summary>
         <input type="text" class="search-box" id="search-hazir" placeholder="Ara (ürün adı, kod, fatura...)" oninput="onSearchInput('hazir', this.value)">
-        <button class="action-btn del" style="width:100%;padding:10px;margin-top:8px;" onclick="clearHazir()">🗑️ Hazır listesini temizle</button>
+        <button class="action-btn clear-btn" style="width:100%;padding:10px;margin-top:8px;" onclick="clearHazir()">🗑️ Hazır listesini temizle</button>
         <div id="magaza-ready-list" style="margin-top:12px;"></div>
       </details>
     </div>
@@ -297,8 +298,8 @@
       <details id="bekleyen-details">
         <summary style="cursor:pointer;font-size:15px;font-weight:700;color:var(--navy);">Bekleyen siparişler (<span id="bekleyen-count">0</span>)</summary>
         <input type="text" class="search-box" id="search-bekleyen" placeholder="Ara (ürün adı, kod, fatura...)" oninput="onSearchInput('bekleyen', this.value)">
+        <button class="action-btn clear-btn" style="width:100%;padding:10px;margin-top:8px;" onclick="clearBekleyen()">🗑️ Bekleyen listesini temizle</button>
         <div id="magaza-list" style="margin-top:12px;"></div>
-        <button class="action-btn del" style="width:100%;padding:10px;margin-top:8px;" onclick="clearBekleyen()">🗑️ Bekleyen listesini temizle</button>
       </details>
     </div>
 
@@ -306,8 +307,8 @@
       <details id="tukendi-details">
         <summary style="cursor:pointer;font-size:15px;font-weight:700;color:var(--navy);">Tükenmiş ürünler (<span id="tukendi-count">0</span>)</summary>
         <input type="text" class="search-box" id="search-tukendi" placeholder="Ara (ürün adı, kod, fatura...)" oninput="onSearchInput('tukendi', this.value)">
+        <button class="action-btn clear-btn" style="width:100%;padding:10px;margin-top:8px;" id="tukendi-clear-btn" onclick="clearTukendi()">🗑️ Tükenmiş listesini temizle</button>
         <div id="magaza-tukendi-list" style="margin-top:12px;"></div>
-        <button class="action-btn del" style="width:100%;padding:10px;margin-top:8px;" id="tukendi-clear-btn" onclick="clearTukendi()">🗑️ Tükenmiş listesini temizle</button>
       </details>
     </div>
 
