@@ -712,6 +712,10 @@ async function markReady(idsCsv){
 
 async function undoTukendi(idsCsv){
   const ids = idsCsv.split(',');
+  const msg = ids.length > 1
+    ? `${ids.length} ürün tekrar depoya gönderilecek (tükendi işareti kaldırılacak). Emin misiniz?`
+    : 'Bu ürün tekrar depoya gönderilecek (tükendi işareti kaldırılacak). Emin misiniz?';
+  if(!confirm(msg)) return;
   const batch = db.batch();
   ids.forEach(id => batch.update(kayitlarRef.doc(id), {durum:'bekliyor'}));
   await batch.commit();
