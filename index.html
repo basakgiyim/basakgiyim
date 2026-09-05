@@ -739,6 +739,10 @@ async function markDelivered(idsCsv){
 
 async function deleteRecord(idsCsv){
   const ids = idsCsv.split(',');
+  const msg = ids.length > 1
+    ? `${ids.length} kayıt kalıcı olarak silinecek. Emin misiniz?`
+    : 'Bu kayıt kalıcı olarak silinecek. Emin misiniz?';
+  if(!confirm(msg)) return;
   await batchDeleteIds(ids);
   showToast(ids.length > 1 ? `${ids.length} kayıt silindi` : 'Kayıt silindi');
 }
