@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Başak Giyim — Depo Sevkiyat Takip</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --navy:#1F3A5F;
@@ -334,7 +336,18 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwYvzUwohqbUppUA2A0XIaX5JioYZ_pkikf44Z71vgyC3U9Lzz6XhKW0ufCkrJ2IygoIA/exec';
+const firebaseConfig = {
+  apiKey: "AIzaSyCMpk0jJt6Ek5FhAeYEsCLh05p5Jn6xtiw",
+  authDomain: "basakgiyimtakip.firebaseapp.com",
+  projectId: "basakgiyimtakip",
+  storageBucket: "basakgiyimtakip.firebasestorage.app",
+  messagingSenderId: "994577125293",
+  appId: "1:994577125293:web:0752b24679f569a0c65b24"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const kayitlarRef = db.collection('kayitlar');
+const sorgularRef = db.collection('sorgular');
 
 let allRecords = [];
 let currentView = 'magaza';
@@ -411,7 +424,6 @@ function matchesSearch(r, query){
   return words.every(w => text.includes(w));
 }
 
-let barcodeDictionary = {};
 let zxingReader = null;
 let scannerMode = 'manual';
 let scanLocked = false;
@@ -425,20 +437,6 @@ function loadZXing(){
     s.onerror = () => reject(new Error('Tarayıcı kütüphanesi yüklenemedi'));
     document.head.appendChild(s);
   });
-}
-
-async function loadBarcodeDictionary(){
-  try{
-    const res = await fetch(WEBAPP_URL + '?type=barcodes');
-    const data = await res.json();
-    const dict = {};
-    data.forEach(row => {
-      if(row.barkod) dict[String(row.barkod)] = { urunKodu: row.urunKodu||'', urunAdi: row.urunAdi||'', beden: row.beden||'' };
-    });
-    barcodeDictionary = dict;
-  }catch(e){
-    console.error('Barkod sözlüğü yüklenemedi', e);
-  }
 }
 
 async function openScanner(mode){
@@ -511,43 +509,41 @@ function setStatus(ok){
   document.getElementById('status-text').textContent = ok ? 'Bağlı · canlı' : 'Bağlantı sorunu';
 }
 
-async function loadAll(){
-  try{
-    const res = await fetch(WEBAPP_URL, {method:'GET'});
-    if(!res.ok) throw new Error('bad status');
-    const data = await res.json();
+function startRealtimeListener(){
+  kayitlarRef.onSnapshot(snapshot => {
+    allRecords = snapshot.docs.map(doc => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        zaman: Number(d.zaman) || 0,
+        urunKodu: d.urunKodu || '',
+        urunAdi: d.urunAdi || '',
+        beden: d.beden || '',
+        adet: Number(d.adet) || 1,
+        not: d.not || '',
+        durum: d.durum || 'bekliyor',
+        hazirZaman: d.hazirZaman ? Number(d.hazirZaman) : null,
+        teslimZaman: d.teslimZaman ? Number(d.teslimZaman) : null,
+        faturaNo: d.faturaNo || '',
+        depoAdi: d.depoAdi || '',
+        acil: !!d.acil
+      };
+    }).sort((a,b) => b.zaman - a.zaman);
     setStatus(true);
-    return data.map(r => ({
-      id: r.id,
-      zaman: Number(r.zaman) || 0,
-      urunKodu: r.urunKodu || '',
-      urunAdi: r.urunAdi || '',
-      beden: r.beden || '',
-      adet: Number(r.adet) || 1,
-      not: r.not || '',
-      durum: r.durum || 'bekliyor',
-      hazirZaman: r.hazirZaman ? Number(r.hazirZaman) : null,
-      teslimZaman: r.teslimZaman ? Number(r.teslimZaman) : null,
-      faturaNo: r.faturaNo || '',
-      depoAdi: r.depoAdi || '',
-      acil: r.acil === 'TRUE' || r.acil === true
-    })).sort((a,b) => b.zaman - a.zaman);
-  }catch(e){
+    render();
+  }, err => {
+    console.error('Firestore dinleme hatası', err);
     setStatus(false);
-    return null;
-  }
+  });
 }
 
-async function postAction(payload){
-  try{
-    const res = await fetch(WEBAPP_URL, {
-      method:'POST',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify(payload)
-    });
-    return res.ok;
-  }catch(e){
-    return false;
+async function batchDeleteIds(ids){
+  const chunkSize = 450;
+  for(let i = 0; i < ids.length; i += chunkSize){
+    const chunk = ids.slice(i, i + chunkSize);
+    const batch = db.batch();
+    chunk.forEach(id => batch.delete(kayitlarRef.doc(id)));
+    await batch.commit();
   }
 }
 
@@ -600,37 +596,30 @@ function setView(v){
 }
 
 function requestWolvoxLookup(query){
-  return new Promise(async (resolve) => {
-    try{
-      const res = await fetch(WEBAPP_URL, {
-        method:'POST',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify({action:'lookupRequest', barkod: query})
-      });
-      const data = await res.json();
-      if(!data.id){ resolve({hata:'Sorgu başlatılamadı'}); return; }
-      pollWolvoxLookup(data.id, 0, resolve);
-    }catch(e){
-      resolve({hata:'Sorgu gönderilemedi, bağlantıyı kontrol edin.'});
-    }
+  return new Promise((resolve) => {
+    const docRef = sorgularRef.doc();
+    docRef.set({barkod: query, zaman: Date.now(), durum: 'bekliyor', sonuc: [], hata: ''})
+      .then(() => {
+        let done = false;
+        const timeoutId = setTimeout(() => {
+          if(done) return;
+          done = true;
+          unsubscribe();
+          resolve({hata:'Zaman aşımı — depo bilgisayarındaki program çalışmıyor olabilir.'});
+        }, 40000);
+        const unsubscribe = docRef.onSnapshot(doc => {
+          const data = doc.data();
+          if(data && data.durum === 'tamamlandi' && !done){
+            done = true;
+            clearTimeout(timeoutId);
+            unsubscribe();
+            if(data.hata){ resolve({hata: data.hata}); }
+            else{ resolve({results: data.sonuc || []}); }
+          }
+        });
+      })
+      .catch(() => resolve({hata:'Sorgu gönderilemedi, bağlantıyı kontrol edin.'}));
   });
-}
-
-function pollWolvoxLookup(id, attempt, resolve){
-  if(attempt > 20){ resolve({hata:'Zaman aşımı — depo bilgisayarındaki program çalışmıyor olabilir.'}); return; }
-  fetch(WEBAPP_URL + '?type=lookupStatus&id=' + encodeURIComponent(id))
-    .then(res => res.json())
-    .then(data => {
-      if(data.durum === 'tamamlandi'){
-        if(data.hata){ resolve({hata: data.hata}); return; }
-        let results = [];
-        try{ results = JSON.parse(data.sonucJSON || '[]'); }catch(e){}
-        resolve({results});
-      }else{
-        setTimeout(() => pollWolvoxLookup(id, attempt + 1, resolve), 2000);
-      }
-    })
-    .catch(() => setTimeout(() => pollWolvoxLookup(id, attempt + 1, resolve), 2000));
 }
 
 function stockResultCard(p){
@@ -684,11 +673,18 @@ async function submitSale(isAcil){
   const originalText = clickedBtn.textContent;
   clickedBtn.textContent = 'Gönderiliyor...';
 
+  const id = genId();
   const record = {
-    id: genId(), zaman: Date.now(), urunKodu: kod, urunAdi: ad,
-    beden: beden, adet: adet, not: '', durum: 'bekliyor', barkod: kod, acil: !!isAcil
+    zaman: Date.now(), urunKodu: kod, urunAdi: ad,
+    beden: beden, adet: adet, not: '', durum: 'bekliyor', barkod: kod, acil: !!isAcil,
+    hazirZaman: null, teslimZaman: null, faturaNo: '', depoAdi: ''
   };
-  const ok = await postAction({action:'add', record});
+  let ok = true;
+  try{
+    await kayitlarRef.doc(id).set(record);
+  }catch(e){
+    ok = false;
+  }
 
   btn.disabled = false;
   acilBtn.disabled = false;
@@ -700,7 +696,6 @@ async function submitSale(isAcil){
     document.getElementById('f-ad').value = '';
     document.getElementById('f-beden').value = '';
     document.getElementById('f-adet').value = '1';
-    await poll();
   }else{
     showToast('Gönderilemedi, tekrar deneyin');
   }
@@ -708,20 +703,18 @@ async function submitSale(isAcil){
 
 async function markReady(idsCsv){
   const ids = idsCsv.split(',');
-  for(const id of ids){
-    await postAction({action:'updateStatus', id, durum:'hazir'});
-  }
+  const batch = db.batch();
+  ids.forEach(id => batch.update(kayitlarRef.doc(id), {durum:'hazir', hazirZaman: Date.now()}));
+  await batch.commit();
   showToast(ids.length > 1 ? `${ids.length} ürün hazırlandı olarak işaretlendi` : 'Hazırlandı olarak işaretlendi');
-  await poll();
 }
 
 async function undoTukendi(idsCsv){
   const ids = idsCsv.split(',');
-  for(const id of ids){
-    await postAction({action:'updateStatus', id, durum:'bekliyor'});
-  }
+  const batch = db.batch();
+  ids.forEach(id => batch.update(kayitlarRef.doc(id), {durum:'bekliyor'}));
+  await batch.commit();
   showToast(ids.length > 1 ? `${ids.length} ürün tekrar depoya gönderildi` : 'Ürün tekrar depoya gönderildi');
-  await poll();
 }
 
 async function markOutOfStock(idsCsv){
@@ -730,29 +723,24 @@ async function markOutOfStock(idsCsv){
     ? `${ids.length} ürün tükendi olarak işaretlenecek ve mağazaya "Tükendi" diye bildirilecek. Emin misiniz?`
     : 'Bu ürün tükendi olarak işaretlenecek ve mağazaya "Tükendi" diye bildirilecek. Emin misiniz?';
   if(!confirm(msg)) return;
-  for(const id of ids){
-    await postAction({action:'updateStatus', id, durum:'tukendi'});
-  }
+  const batch = db.batch();
+  ids.forEach(id => batch.update(kayitlarRef.doc(id), {durum:'tukendi'}));
+  await batch.commit();
   showToast(ids.length > 1 ? `${ids.length} ürün tükendi olarak işaretlendi` : 'Tükendi olarak işaretlendi');
-  await poll();
 }
 
 async function markDelivered(idsCsv){
   const ids = idsCsv.split(',');
-  for(const id of ids){
-    await postAction({action:'updateStatus', id, durum:'teslim'});
-  }
+  // Magazaya ulasan urun hicbir ekranda gosterilmiyor, bu yuzden koleksiyon
+  // sismesin diye kaydi guncellemek yerine dogrudan siliyoruz.
+  await batchDeleteIds(ids);
   showToast(ids.length > 1 ? `${ids.length} ürün mağazaya ulaştı olarak işaretlendi` : 'Mağazaya ulaştı olarak işaretlendi');
-  await poll();
 }
 
 async function deleteRecord(idsCsv){
   const ids = idsCsv.split(',');
-  for(const id of ids){
-    await postAction({action:'delete', id});
-  }
+  await batchDeleteIds(ids);
   showToast(ids.length > 1 ? `${ids.length} kayıt silindi` : 'Kayıt silindi');
-  await poll();
 }
 
 async function clearSection(durumValue, sectionLabel){
@@ -771,13 +759,8 @@ async function clearSection(durumValue, sectionLabel){
   }
 
   const targets = allRecords.filter(r => r.durum===durumValue && (!inCat || matchesCategory(r, inCat)));
-  let ok = 0;
-  for(const r of targets){
-    const success = await postAction({action:'delete', id:r.id});
-    if(success) ok++;
-  }
-  showToast(`${sectionLabel}: ${ok} kayıt temizlendi`);
-  await poll();
+  await batchDeleteIds(targets.map(r => r.id));
+  showToast(`${sectionLabel}: ${targets.length} kayıt temizlendi`);
 }
 
 async function clearHazir(){ await clearSection('hazir', 'Hazır, teslim alın'); }
@@ -798,20 +781,11 @@ async function clearAllRecords(){
     return;
   }
 
-  if(currentKademeFilterMagaza === 'tumu'){
-    const ok = await postAction({action:'clearAll'});
-    if(ok){ showToast('Tüm kayıtlar temizlendi'); await poll(); }
-    else{ showToast('İşlem başarısız, tekrar deneyin'); }
-  }else{
-    const targets = allRecords.filter(r => matchesCategory(r, currentKademeFilterMagaza));
-    let ok = 0;
-    for(const r of targets){
-      const success = await postAction({action:'delete', id:r.id});
-      if(success) ok++;
-    }
-    showToast(`${label}: ${ok} kayıt temizlendi`);
-    await poll();
-  }
+  const targets = currentKademeFilterMagaza === 'tumu'
+    ? allRecords
+    : allRecords.filter(r => matchesCategory(r, currentKademeFilterMagaza));
+  await batchDeleteIds(targets.map(r => r.id));
+  showToast(`${label}: ${targets.length} kayıt temizlendi`);
 }
 
 const KADEME_LABELS = {
@@ -1001,19 +975,10 @@ function render(){
   firstLoad = false;
 }
 
-async function poll(){
-  const arr = await loadAll();
-  if(arr !== null){
-    allRecords = arr;
-    render();
-  }
-}
-
 (function init(){
   const hash = window.location.hash.replace('#','');
   setView(hash === 'depo' ? 'depo' : 'magaza');
-  poll();
-  setInterval(poll, 9000);
+  startRealtimeListener();
 })();
 </script>
 
