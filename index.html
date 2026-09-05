@@ -938,8 +938,9 @@ function render(){
     `;
     const inCategory = r => matchesCategory(r, currentKademeFilterMagaza);
 
-    const readyItems = sortRecords(groupItems(allRecords.filter(r => r.durum==='hazir' && inCategory(r) && matchesSearch(r, searchHazir))), currentSortMagaza);
-    document.getElementById('hazir-count').textContent = readyItems.length;
+    const readyRaw = allRecords.filter(r => r.durum==='hazir' && inCategory(r) && matchesSearch(r, searchHazir));
+    document.getElementById('hazir-count').textContent = readyRaw.length;
+    const readyItems = sortRecords(groupItems(readyRaw), currentSortMagaza);
     const readyList = document.getElementById('magaza-ready-list');
     readyList.innerHTML = readyItems.length === 0
       ? `<div class="empty">Şu an teslim alınmayı bekleyen ürün yok.</div>`
@@ -951,8 +952,9 @@ function render(){
       ? `<div class="empty">Tükenmiş ürün yok.</div>`
       : tukendiItems.map(r => itemHTML(r, {showUndoAction:true, showDelete:true})).join('');
 
-    const pendingItems = sortRecords(groupItems(allRecords.filter(r => r.durum==='bekliyor' && inCategory(r) && matchesSearch(r, searchBekleyen))), currentSortMagaza);
-    document.getElementById('bekleyen-count').textContent = pendingItems.length;
+    const pendingRaw = allRecords.filter(r => r.durum==='bekliyor' && inCategory(r) && matchesSearch(r, searchBekleyen));
+    document.getElementById('bekleyen-count').textContent = pendingRaw.length;
+    const pendingItems = sortRecords(groupItems(pendingRaw), currentSortMagaza);
     const list = document.getElementById('magaza-list');
     if(pendingItems.length === 0){
       list.innerHTML = `<div class="empty">${allRecords.length === 0 ? 'Henüz satış yok. Wolvox\'ta yapılan satışlar burada otomatik görünecek.' : 'Bu kategoride bekleyen kayıt yok.'}</div>`;
