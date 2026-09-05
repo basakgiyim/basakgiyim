@@ -353,6 +353,32 @@ function setSortMagaza(mode){
   render();
 }
 
+function groupItems(list){
+  const map = new Map();
+  list.forEach(r => {
+    const key = [r.urunKodu||'', r.urunAdi||'', r.beden||''].join('|||');
+    if(!map.has(key)){
+      map.set(key, {
+        ...r,
+        ids: [r.id],
+        faturaNo: r.faturaNo || ''
+      });
+    }else{
+      const g = map.get(key);
+      g.ids.push(r.id);
+      g.adet += r.adet;
+      g.acil = g.acil || !!r.acil;
+      if(r.faturaNo){
+        g.faturaNo = g.faturaNo ? (g.faturaNo.split(',').includes(r.faturaNo) ? g.faturaNo : g.faturaNo + ',' + r.faturaNo) : r.faturaNo;
+      }
+      if(r.zaman < g.zaman) g.zaman = r.zaman;
+      if(r.hazirZaman && (!g.hazirZaman || r.hazirZaman > g.hazirZaman)) g.hazirZaman = r.hazirZaman;
+      if(r.teslimZaman && (!g.teslimZaman || r.teslimZaman > g.teslimZaman)) g.teslimZaman = r.teslimZaman;
+    }
+  });
+  return Array.from(map.values());
+}
+
 function sortRecords(list, mode){
   return list.slice().sort((a,b) => {
     if(mode === 'alfabe'){
@@ -580,35 +606,53 @@ async function submitSale(isAcil){
   }
 }
 
-async function markReady(id){
-  const ok = await postAction({action:'updateStatus', id, durum:'hazir'});
-  if(ok){ showToast('Hazırlandı olarak işaretlendi'); await poll(); }
-  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+async function markReady(idsCsv){
+  const ids = idsCsv.split(',');
+  for(const id of ids){
+    await postAction({action:'updateStatus', id, durum:'hazir'});
+  }
+  showToast(ids.length > 1 ? `${ids.length} ürün hazırlandı olarak işaretlendi` : 'Hazırlandı olarak işaretlendi');
+  await poll();
 }
 
-async function undoTukendi(id){
-  const ok = await postAction({action:'updateStatus', id, durum:'bekliyor'});
-  if(ok){ showToast('Ürün tekrar depoya gönderildi'); await poll(); }
-  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+async function undoTukendi(idsCsv){
+  const ids = idsCsv.split(',');
+  for(const id of ids){
+    await postAction({action:'updateStatus', id, durum:'bekliyor'});
+  }
+  showToast(ids.length > 1 ? `${ids.length} ürün tekrar depoya gönderildi` : 'Ürün tekrar depoya gönderildi');
+  await poll();
 }
 
-async function markOutOfStock(id){
-  if(!confirm('Bu ürün tükendi olarak işaretlenecek ve mağazaya "Tükendi" diye bildirilecek. Emin misiniz?')) return;
-  const ok = await postAction({action:'updateStatus', id, durum:'tukendi'});
-  if(ok){ showToast('Tükendi olarak işaretlendi'); await poll(); }
-  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+async function markOutOfStock(idsCsv){
+  const ids = idsCsv.split(',');
+  const msg = ids.length > 1
+    ? `${ids.length} ürün tükendi olarak işaretlenecek ve mağazaya "Tükendi" diye bildirilecek. Emin misiniz?`
+    : 'Bu ürün tükendi olarak işaretlenecek ve mağazaya "Tükendi" diye bildirilecek. Emin misiniz?';
+  if(!confirm(msg)) return;
+  for(const id of ids){
+    await postAction({action:'updateStatus', id, durum:'tukendi'});
+  }
+  showToast(ids.length > 1 ? `${ids.length} ürün tükendi olarak işaretlendi` : 'Tükendi olarak işaretlendi');
+  await poll();
 }
 
-async function markDelivered(id){
-  const ok = await postAction({action:'updateStatus', id, durum:'teslim'});
-  if(ok){ showToast('Mağazaya ulaştı olarak işaretlendi'); await poll(); }
-  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+async function markDelivered(idsCsv){
+  const ids = idsCsv.split(',');
+  for(const id of ids){
+    await postAction({action:'updateStatus', id, durum:'teslim'});
+  }
+  showToast(ids.length > 1 ? `${ids.length} ürün mağazaya ulaştı olarak işaretlendi` : 'Mağazaya ulaştı olarak işaretlendi');
+  await poll();
 }
 
-async function deleteRecord(id){
-  const ok = await postAction({action:'delete', id});
-  if(ok){ showToast('Kayıt silindi'); await poll(); }
-  else{ showToast('İşlem başarısız, tekrar deneyin'); }
+async function deleteRecord(idsCsv){
+  const ids = idsCsv.split(',');
+  for(const id of ids){
+    await postAction({action:'delete', id});
+  }
+  showToast(ids.length > 1 ? `${ids.length} kayıt silindi` : 'Kayıt silindi');
+  await poll();
 }
 
 async function clearSection(durumValue, sectionLabel){
@@ -756,21 +800,24 @@ function escapeHtml(s){
 
 function itemHTML(r, opts){
   opts = opts || {};
+  const idsCsv = (r.ids || [r.id]).join(',');
   let actions = '';
-  if(opts.showReadyAction) actions += `<button class="action-btn ready" onclick="markReady('${r.id}')">Hazırlandı ✓</button>`;
-  if(opts.showOutOfStockAction) actions += `<button class="action-btn outofstock" onclick="markOutOfStock('${r.id}')">Tükendi ✕</button>`;
-  if(opts.showUndoAction) actions += `<button class="action-btn undo" onclick="undoTukendi('${r.id}')">↩️ Geri Al</button>`;
-  if(opts.showDeliveredAction) actions += `<button class="action-btn delivered" onclick="markDelivered('${r.id}')">Mağazaya ulaştı ✓</button>`;
-  if(opts.showDelete) actions += `<button class="action-btn del" onclick="deleteRecord('${r.id}')" title="Sil">✕</button>`;
+  if(opts.showReadyAction) actions += `<button class="action-btn ready" onclick="markReady('${idsCsv}')">Hazırlandı ✓</button>`;
+  if(opts.showOutOfStockAction) actions += `<button class="action-btn outofstock" onclick="markOutOfStock('${idsCsv}')">Tükendi ✕</button>`;
+  if(opts.showUndoAction) actions += `<button class="action-btn undo" onclick="undoTukendi('${idsCsv}')">↩️ Geri Al</button>`;
+  if(opts.showDeliveredAction) actions += `<button class="action-btn delivered" onclick="markDelivered('${idsCsv}')">Mağazaya ulaştı ✓</button>`;
+  if(opts.showDelete) actions += `<button class="action-btn del" onclick="deleteRecord('${idsCsv}')" title="Sil">✕</button>`;
 
-  const kaynak = r.faturaNo ? ` · Fatura ${escapeHtml(r.faturaNo)}` : '';
+  const faturaCount = r.faturaNo ? r.faturaNo.split(',').filter(Boolean).length : 0;
+  const kaynak = faturaCount === 0 ? '' : faturaCount === 1 ? ` · Fatura ${escapeHtml(r.faturaNo)}` : ` · ${faturaCount} fatura`;
+  const grupNotu = '';
 
   return `
     <div class="item st-${r.durum}"${r.acil ? ' style="border-left-color:#C0392B;"' : ''}>
       <div class="item-top">
         <div>
-          <div class="item-name">${escapeHtml(r.urunAdi)}</div>
-          <div class="item-meta">${escapeHtml(r.urunKodu || '—')} ${r.beden ? '· ' + escapeHtml(r.beden) : ''} · ${r.adet} adet${kaynak}</div>
+          <div class="item-name">${escapeHtml(r.urunAdi)}${grupNotu}</div>
+          <div class="item-meta">${escapeHtml(r.urunKodu || '—')} ${r.beden ? '· ' + escapeHtml(r.beden) : ''} · <strong>${r.adet} adet</strong>${kaynak}</div>
         </div>
         <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:4px;">
           ${r.acil ? '<span class="acil-badge">🚨 ACİL</span>' : ''}
@@ -793,7 +840,7 @@ function render(){
     `;
     const inCategory = r => matchesCategory(r, currentKademeFilterMagaza);
 
-    const readyItems = sortRecords(allRecords.filter(r => r.durum==='hazir' && inCategory(r) && matchesSearch(r, searchHazir)), currentSortMagaza);
+    const readyItems = sortRecords(groupItems(allRecords.filter(r => r.durum==='hazir' && inCategory(r) && matchesSearch(r, searchHazir))), currentSortMagaza);
     document.getElementById('hazir-count').textContent = readyItems.length;
     const readyList = document.getElementById('magaza-ready-list');
     readyList.innerHTML = readyItems.length === 0
@@ -806,7 +853,7 @@ function render(){
       ? `<div class="empty">Tükenmiş ürün yok.</div>`
       : tukendiItems.map(r => itemHTML(r, {showUndoAction:true, showDelete:true})).join('');
 
-    const pendingItems = sortRecords(allRecords.filter(r => r.durum==='bekliyor' && inCategory(r) && matchesSearch(r, searchBekleyen)), currentSortMagaza);
+    const pendingItems = sortRecords(groupItems(allRecords.filter(r => r.durum==='bekliyor' && inCategory(r) && matchesSearch(r, searchBekleyen))), currentSortMagaza);
     document.getElementById('bekleyen-count').textContent = pendingItems.length;
     const list = document.getElementById('magaza-list');
     if(pendingItems.length === 0){
@@ -843,13 +890,9 @@ function render(){
 
     let filteredPending = pending.filter(r => matchesCategory(r, currentKademeFilter));
     filteredPending = filteredPending.filter(r => matchesSearch(r, searchDepo));
+    filteredPending = groupItems(filteredPending);
 
-    filteredPending = filteredPending.slice().sort((a,b) => {
-      if(currentSortDepo === 'alfabe'){
-        return (a.urunAdi||'').localeCompare((b.urunAdi||''), 'tr');
-      }
-      return a.zaman - b.zaman;
-    });
+    filteredPending = sortRecords(filteredPending, currentSortDepo);
 
     document.getElementById('depo-pending-list').innerHTML = filteredPending.length === 0
       ? `<div class="empty">Bu kategoride bekleyen ürün yok.</div>`
