@@ -679,7 +679,7 @@ function ageOverlapsIlkokul(ranges){
 
 function detectKademe(r){
   const text = ((r.urunAdi||'') + ' ' + (r.beden||'')).toLocaleLowerCase('tr-TR');
-  if(/\blise/.test(text) || /\bihl\b/.test(text)) return 'lise';
+  if(/\blise/.test(text) || /\bihl/.test(text)) return 'lise';
   if(/\bortaokul/.test(text) || /\borta okul/.test(text) || /\biho\b/.test(text) || /\borta\b/.test(text)) return 'ortaokul';
   if(/\bilkokul/.test(text) || /\bilköğretim/.test(text) || /\bilk\b/.test(text) || text.includes('namık kemal')) return 'ilkokul';
   if(ageOverlapsIlkokul(extractAgeRanges(text))) return 'ilkokul';
