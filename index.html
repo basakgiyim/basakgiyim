@@ -413,12 +413,11 @@ function groupItems(list){
 
 function sortRecords(list, mode){
   return list.slice().sort((a,b) => {
-    const acilDiff = (b.acil?1:0) - (a.acil?1:0);
-    if(acilDiff !== 0) return acilDiff;
-    if(a.acil && b.acil) return a.zaman - b.zaman;
     if(mode === 'alfabe'){
       return (a.urunAdi||'').localeCompare((b.urunAdi||''), 'tr');
     }
+    const acilDiff = (b.acil?1:0) - (a.acil?1:0);
+    if(acilDiff !== 0) return acilDiff;
     return a.zaman - b.zaman;
   });
 }
