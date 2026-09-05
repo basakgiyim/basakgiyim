@@ -113,6 +113,18 @@
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .submit-btn{width:100%;padding:13px;border:none;border-radius:9px;background:var(--navy);color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;}
   .submit-btn:disabled{opacity:0.5;}
+  .acil-btn{background:#C0392B;}
+  .acil-badge{
+    background:#C0392B;
+    color:#fff;
+    font-size:11px;
+    font-weight:800;
+    padding:3px 9px;
+    border-radius:20px;
+    white-space:nowrap;
+    margin-right:6px;
+    animation:pulse 1.4s ease-in-out infinite;
+  }
 
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--navy-dark);color:#fff;padding:11px 20px;border-radius:30px;font-size:13.5px;font-weight:600;opacity:0;transition:all .25s ease;pointer-events:none;z-index:50;white-space:nowrap;}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -130,6 +142,8 @@
     cursor:pointer;
   }
   .filter-chip.active{background:var(--navy);border-color:var(--navy);color:#fff;}
+  .filter-chip.acil-chip{border-color:#C0392B;color:#C0392B;}
+  .filter-chip.acil-chip.active{background:#C0392B;border-color:#C0392B;color:#fff;}
 
   .search-box{
     width:100%;
@@ -240,7 +254,10 @@
             <input type="number" id="f-adet" value="1" min="1" inputmode="numeric">
           </div>
         </div>
-        <button class="submit-btn" id="submit-btn" onclick="submitSale()">Depoya gönder</button>
+        <div class="row2" style="margin-top:4px;">
+          <button class="submit-btn" id="submit-btn" onclick="submitSale(false)">Depoya gönder</button>
+          <button class="submit-btn acil-btn" id="submit-btn-acil" onclick="submitSale(true)">🚨 Acil Depoya Gönder</button>
+        </div>
       </details>
     </div>
 
@@ -455,7 +472,8 @@ async function loadAll(){
       hazirZaman: r.hazirZaman ? Number(r.hazirZaman) : null,
       teslimZaman: r.teslimZaman ? Number(r.teslimZaman) : null,
       faturaNo: r.faturaNo || '',
-      depoAdi: r.depoAdi || ''
+      depoAdi: r.depoAdi || '',
+      acil: r.acil === 'TRUE' || r.acil === true
     })).sort((a,b) => b.zaman - a.zaman);
   }catch(e){
     setStatus(false);
@@ -524,7 +542,7 @@ function setView(v){
   render();
 }
 
-async function submitSale(){
+async function submitSale(isAcil){
   const kod = document.getElementById('f-kod').value.trim();
   const ad = document.getElementById('f-ad').value.trim();
   const beden = document.getElementById('f-beden').value.trim();
@@ -533,20 +551,25 @@ async function submitSale(){
   if(!ad){ showToast('Ürün adını girin'); return; }
 
   const btn = document.getElementById('submit-btn');
+  const acilBtn = document.getElementById('submit-btn-acil');
   btn.disabled = true;
-  btn.textContent = 'Gönderiliyor...';
+  acilBtn.disabled = true;
+  const clickedBtn = isAcil ? acilBtn : btn;
+  const originalText = clickedBtn.textContent;
+  clickedBtn.textContent = 'Gönderiliyor...';
 
   const record = {
     id: genId(), zaman: Date.now(), urunKodu: kod, urunAdi: ad,
-    beden: beden, adet: adet, not: '', durum: 'bekliyor', barkod: kod
+    beden: beden, adet: adet, not: '', durum: 'bekliyor', barkod: kod, acil: !!isAcil
   };
   const ok = await postAction({action:'add', record});
 
   btn.disabled = false;
-  btn.textContent = 'Depoya gönder';
+  acilBtn.disabled = false;
+  clickedBtn.textContent = originalText;
 
   if(ok){
-    showToast('Depoya gönderildi');
+    showToast(isAcil ? 'ACİL olarak depoya gönderildi' : 'Depoya gönderildi');
     document.getElementById('f-kod').value = '';
     document.getElementById('f-ad').value = '';
     document.getElementById('f-beden').value = '';
@@ -603,7 +626,7 @@ async function clearSection(durumValue, sectionLabel){
     return;
   }
 
-  const targets = allRecords.filter(r => r.durum===durumValue && (!inCat || detectKademe(r)===inCat));
+  const targets = allRecords.filter(r => r.durum===durumValue && (!inCat || matchesCategory(r, inCat)));
   let ok = 0;
   for(const r of targets){
     const success = await postAction({action:'delete', id:r.id});
@@ -636,7 +659,7 @@ async function clearAllRecords(){
     if(ok){ showToast('Tüm kayıtlar temizlendi'); await poll(); }
     else{ showToast('İşlem başarısız, tekrar deneyin'); }
   }else{
-    const targets = allRecords.filter(r => detectKademe(r) === currentKademeFilterMagaza);
+    const targets = allRecords.filter(r => matchesCategory(r, currentKademeFilterMagaza));
     let ok = 0;
     for(const r of targets){
       const success = await postAction({action:'delete', id:r.id});
@@ -649,9 +672,9 @@ async function clearAllRecords(){
 
 const KADEME_LABELS = {
   tumu: 'Tümü', ilkokul: 'İlkokul', ortaokul: 'Ortaokul', lise: 'Lise',
-  penye: 'Penye', destan: 'Destan', diger: 'Diğer'
+  penye: 'Penye', destan: 'Destan', diger: 'Diğer', acil: 'ACİL!'
 };
-const KADEME_KEYS = ['tumu','ilkokul','ortaokul','lise','penye','destan','diger'];
+const KADEME_KEYS = ['tumu','ilkokul','ortaokul','lise','penye','destan','diger','acil'];
 
 function extractAgeRanges(text){
   const ranges = [];
@@ -688,6 +711,12 @@ function detectKademe(r){
   return 'diger';
 }
 
+function matchesCategory(r, cat){
+  if(cat === 'tumu') return true;
+  if(cat === 'acil') return !!r.acil;
+  return detectKademe(r) === cat;
+}
+
 function setKademeFilter(k){
   currentKademeFilter = k;
   render();
@@ -702,9 +731,12 @@ function renderFilterChipsInto(containerId, records, activeFilter, setterName){
   const counts = {};
   KADEME_KEYS.forEach(k => counts[k] = 0);
   counts.tumu = records.length;
-  records.forEach(r => { counts[detectKademe(r)]++; });
+  records.forEach(r => {
+    counts[detectKademe(r)]++;
+    if(r.acil) counts.acil++;
+  });
   document.getElementById(containerId).innerHTML = KADEME_KEYS.map(key =>
-    `<button class="filter-chip ${activeFilter===key ? 'active' : ''}" onclick="${setterName}('${key}')">${KADEME_LABELS[key]} (${counts[key]})</button>`
+    `<button class="filter-chip ${activeFilter===key ? 'active' : ''}${key==='acil' ? ' acil-chip' : ''}" onclick="${setterName}('${key}')">${KADEME_LABELS[key]} (${counts[key]})</button>`
   ).join('');
 }
 
@@ -734,13 +766,16 @@ function itemHTML(r, opts){
   const kaynak = r.faturaNo ? ` · Fatura ${escapeHtml(r.faturaNo)}` : '';
 
   return `
-    <div class="item st-${r.durum}">
+    <div class="item st-${r.durum}"${r.acil ? ' style="border-left-color:#C0392B;"' : ''}>
       <div class="item-top">
         <div>
           <div class="item-name">${escapeHtml(r.urunAdi)}</div>
           <div class="item-meta">${escapeHtml(r.urunKodu || '—')} ${r.beden ? '· ' + escapeHtml(r.beden) : ''} · ${r.adet} adet${kaynak}</div>
         </div>
-        <span class="badge st-${r.durum}">${statusLabel(r.durum)}</span>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:4px;">
+          ${r.acil ? '<span class="acil-badge">🚨 ACİL</span>' : ''}
+          <span class="badge st-${r.durum}">${statusLabel(r.durum)}</span>
+        </div>
       </div>
       <div class="item-time">${fmtTime(r.zaman)} girildi${r.hazirZaman ? ' · ' + fmtTime(r.hazirZaman) + ' hazırlandı' : ''}${r.teslimZaman ? ' · ' + fmtTime(r.teslimZaman) + ' ulaştı' : ''}</div>
       ${actions ? `<div class="item-actions">${actions}</div>` : ''}
@@ -756,7 +791,7 @@ function render(){
       <button class="filter-chip ${currentSortMagaza==='saat' ? 'active' : ''}" onclick="setSortMagaza('saat')">🕒 Saate göre</button>
       <button class="filter-chip ${currentSortMagaza==='alfabe' ? 'active' : ''}" onclick="setSortMagaza('alfabe')">🔤 Alfabetik (A-Z)</button>
     `;
-    const inCategory = r => currentKademeFilterMagaza === 'tumu' || detectKademe(r) === currentKademeFilterMagaza;
+    const inCategory = r => matchesCategory(r, currentKademeFilterMagaza);
 
     const readyItems = sortRecords(allRecords.filter(r => r.durum==='hazir' && inCategory(r) && matchesSearch(r, searchHazir)), currentSortMagaza);
     document.getElementById('hazir-count').textContent = readyItems.length;
@@ -806,9 +841,7 @@ function render(){
       <button class="filter-chip ${currentSortDepo==='alfabe' ? 'active' : ''}" onclick="setSortDepo('alfabe')">🔤 Alfabetik (A-Z)</button>
     `;
 
-    let filteredPending = currentKademeFilter === 'tumu'
-      ? pending
-      : pending.filter(r => detectKademe(r) === currentKademeFilter);
+    let filteredPending = pending.filter(r => matchesCategory(r, currentKademeFilter));
     filteredPending = filteredPending.filter(r => matchesSearch(r, searchDepo));
 
     filteredPending = filteredPending.slice().sort((a,b) => {
