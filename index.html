@@ -88,6 +88,18 @@
   .action-btn.undo{background:var(--gold);color:#2A1E05;}
   .action-btn.del{background:transparent;color:var(--red);border:1.5px solid #E7C9BE;flex:0 0 auto;padding:9px 12px;}
   .action-btn.clear-btn{background:var(--red);color:#fff;}
+
+  .search-result-item{
+    border:1.5px solid var(--border);
+    border-radius:9px;
+    padding:10px 12px;
+    margin-bottom:6px;
+    cursor:pointer;
+    background:#FCFBF9;
+  }
+  .search-result-item:active{background:var(--amber-bg);border-color:var(--gold);}
+  .search-result-name{font-size:14px;font-weight:700;color:var(--text);}
+  .search-result-meta{font-size:12px;color:var(--text-dim);margin-top:2px;}
   .empty{text-align:center;padding:30px 10px;color:var(--text-dim);font-size:13.5px;}
 
   details.manual{margin-top:0;}
@@ -250,22 +262,13 @@
         <summary class="manual-btn">+ Eksik Ürün Bildir</summary>
         <button type="button" class="scan-btn" onclick="openScanner('manual')">📷 Barkod Tara</button>
         <div class="field">
-          <label>Ürün kodu / barkod</label>
-          <input type="text" id="f-kod" autocomplete="off">
+          <label>Ürün adı / Ürün kodu / Barkod</label>
+          <input type="text" id="f-search" autocomplete="off" placeholder="Ürün adı yazın ya da barkod tarayın" oninput="onManualSearchInput()">
         </div>
+        <div id="f-search-results"></div>
         <div class="field">
-          <label>Ürün adı</label>
-          <input type="text" id="f-ad" autocomplete="off">
-        </div>
-        <div class="row2">
-          <div class="field">
-            <label>Beden / özellik</label>
-            <input type="text" id="f-beden" autocomplete="off">
-          </div>
-          <div class="field">
-            <label>Adet</label>
-            <input type="number" id="f-adet" value="1" min="1" inputmode="numeric">
-          </div>
+          <label>Adet</label>
+          <input type="number" id="f-adet" value="1" min="1" inputmode="numeric">
         </div>
         <div class="row2" style="margin-top:4px;">
           <button class="submit-btn" id="submit-btn" onclick="submitSale(false)">Depoya gönder</button>
@@ -476,6 +479,10 @@ function closeScanner(){
   document.getElementById('scanner-overlay').style.display = 'none';
 }
 
+let manualSelected = null;
+let manualSearchTimer = null;
+let manualSearchResultsCache = [];
+
 async function handleScanResult(code){
   if(scannerMode === 'stok'){
     document.getElementById('sq-input').value = code;
@@ -483,20 +490,69 @@ async function handleScanResult(code){
     return;
   }
 
-  document.getElementById('f-kod').value = code;
-  showToast('Wolvox\'ta aranıyor...');
+  document.getElementById('f-search').value = code;
+  document.getElementById('f-search-results').innerHTML = `<div class="empty" style="padding:8px 2px;">🔎 Wolvox'ta aranıyor...</div>`;
   const outcome = await requestWolvoxLookup(code);
   const results = outcome.results || [];
-  if(!outcome.hata && results.length > 0){
-    const p = results[0];
-    document.getElementById('f-kod').value = p.urunKodu || code;
-    document.getElementById('f-ad').value = p.urunAdi || '';
-    document.getElementById('f-beden').value = p.beden || '';
-    showToast('Ürün tanındı: ' + (p.urunAdi || code));
+  if(!outcome.hata && results.length === 1){
+    selectManualProduct(results[0]);
+    showToast('Ürün tanındı: ' + (results[0].urunAdi || code));
+  }else if(!outcome.hata && results.length > 1){
+    manualSearchResultsCache = results;
+    renderManualSearchResults(results);
+    document.getElementById('f-search').value = '';
+    showToast('Birden fazla eşleşme bulundu, listeden seçin');
   }else{
-    showToast('Bu barkod Wolvox\'ta bulunamadı, ürün adını elle girin');
+    document.getElementById('f-search').value = '';
+    document.getElementById('f-search-results').innerHTML = '';
+    showToast('Bu barkod Wolvox\'ta bulunamadı, ürün adını yazıp arayabilirsiniz');
   }
-  document.getElementById('f-ad').focus();
+}
+
+function onManualSearchInput(){
+  manualSelected = null;
+  clearTimeout(manualSearchTimer);
+  const val = document.getElementById('f-search').value.trim();
+  const resultsEl = document.getElementById('f-search-results');
+  if(val.length < 2){
+    resultsEl.innerHTML = '';
+    return;
+  }
+  resultsEl.innerHTML = `<div class="empty" style="padding:8px 2px;">🔎 Aranıyor...</div>`;
+  manualSearchTimer = setTimeout(async () => {
+    const outcome = await requestWolvoxLookup(val);
+    if(document.getElementById('f-search').value.trim() !== val) return; // kullanıcı yazmaya devam etmiş
+    if(outcome.hata){
+      resultsEl.innerHTML = `<div class="empty" style="padding:8px 2px;">${escapeHtml(outcome.hata)}</div>`;
+      return;
+    }
+    manualSearchResultsCache = outcome.results || [];
+    renderManualSearchResults(manualSearchResultsCache);
+  }, 700);
+}
+
+function renderManualSearchResults(results){
+  const resultsEl = document.getElementById('f-search-results');
+  if(results.length === 0){
+    resultsEl.innerHTML = `<div class="empty" style="padding:8px 2px;">Sonuç bulunamadı.</div>`;
+    return;
+  }
+  resultsEl.innerHTML = results.map((p, i) => `
+    <div class="search-result-item" onclick="selectManualProductByIndex(${i})">
+      <div class="search-result-name">${escapeHtml(p.urunAdi || '—')}</div>
+      <div class="search-result-meta">${p.urunKodu ? escapeHtml(p.urunKodu) + ' · ' : ''}${p.beden ? 'Beden: ' + escapeHtml(p.beden) : ''} ${p.renk ? '· ' + escapeHtml(p.renk) : ''}</div>
+    </div>
+  `).join('');
+}
+
+function selectManualProductByIndex(i){
+  selectManualProduct(manualSearchResultsCache[i]);
+}
+
+function selectManualProduct(p){
+  manualSelected = p;
+  document.getElementById('f-search').value = p.urunAdi + (p.beden ? ' - ' + p.beden : '');
+  document.getElementById('f-search-results').innerHTML = `<div class="empty" style="padding:8px 2px;color:var(--green);font-weight:700;">✓ Seçildi${p.beden ? ' (Beden: ' + escapeHtml(p.beden) + ')' : ''}</div>`;
 }
 
 function genId(){
@@ -659,12 +715,22 @@ async function startStockQuery(){
 }
 
 async function submitSale(isAcil){
-  const kod = document.getElementById('f-kod').value.trim();
-  const ad = document.getElementById('f-ad').value.trim();
-  const beden = document.getElementById('f-beden').value.trim();
   const adet = parseInt(document.getElementById('f-adet').value, 10) || 1;
 
-  if(!ad){ showToast('Ürün adını girin'); return; }
+  let kod, ad, beden, barkod;
+  if(manualSelected){
+    kod = manualSelected.urunKodu || '';
+    ad = manualSelected.urunAdi || '';
+    beden = manualSelected.beden || '';
+    barkod = kod;
+  }else{
+    ad = document.getElementById('f-search').value.trim();
+    kod = '';
+    beden = '';
+    barkod = '';
+  }
+
+  if(!ad){ showToast('Ürün adı, kodu ya da barkodu girin'); return; }
 
   const btn = document.getElementById('submit-btn');
   const acilBtn = document.getElementById('submit-btn-acil');
@@ -677,7 +743,7 @@ async function submitSale(isAcil){
   const id = genId();
   const record = {
     zaman: Date.now(), urunKodu: kod, urunAdi: ad,
-    beden: beden, adet: adet, not: '', durum: 'bekliyor', barkod: kod, acil: !!isAcil,
+    beden: beden, adet: adet, not: '', durum: 'bekliyor', barkod: barkod, acil: !!isAcil,
     hazirZaman: null, teslimZaman: null, faturaNo: '', depoAdi: ''
   };
   let ok = true;
@@ -693,9 +759,9 @@ async function submitSale(isAcil){
 
   if(ok){
     showToast(isAcil ? 'ACİL olarak depoya gönderildi' : 'Depoya gönderildi');
-    document.getElementById('f-kod').value = '';
-    document.getElementById('f-ad').value = '';
-    document.getElementById('f-beden').value = '';
+    document.getElementById('f-search').value = '';
+    document.getElementById('f-search-results').innerHTML = '';
+    manualSelected = null;
     document.getElementById('f-adet').value = '1';
   }else{
     showToast('Gönderilemedi, tekrar deneyin');
