@@ -1151,6 +1151,15 @@ function startActivityListener(){
   });
 }
 
+let perfViewMode = 'gun';
+let expandedDayIndex = null;
+let currentPerfLogs = [];
+
+function toggleDayDetail(idx){
+  expandedDayIndex = expandedDayIndex === idx ? null : idx;
+  renderPerformancePanel(currentPerfLogs);
+}
+
 async function openPerformancePanel(){
   const panel = document.getElementById('performance-panel');
   if(panel.style.display === 'block'){
@@ -1165,11 +1174,35 @@ async function openPerformancePanel(){
     return;
   }
   panel.style.display = 'block';
+  perfViewMode = 'gun';
+  expandedDayIndex = null;
+  await loadAndRenderPerformance();
+}
+
+function switchPerfView(mode){
+  perfViewMode = mode;
+  loadAndRenderPerformance();
+}
+
+async function loadAndRenderPerformance(){
+  const panel = document.getElementById('performance-panel');
   panel.innerHTML = `<div class="empty">Yükleniyor...</div>`;
   try{
-    const startOfDay = new Date();
-    startOfDay.setHours(0,0,0,0);
-    const snapshot = await db.collection('aktiviteLog').where('zaman', '>=', startOfDay.getTime()).get();
+    let startMs;
+    if(perfViewMode === 'gun'){
+      const startOfDay = new Date();
+      startOfDay.setHours(0,0,0,0);
+      startMs = startOfDay.getTime();
+    }else{
+      const now = new Date();
+      const jsDay = now.getDay();
+      const diffToMonday = (jsDay === 0 ? -6 : 1 - jsDay);
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      monday.setHours(0,0,0,0);
+      startMs = monday.getTime();
+    }
+    const snapshot = await db.collection('aktiviteLog').where('zaman', '>=', startMs).get();
     const logs = snapshot.docs.map(d => d.data());
     renderPerformancePanel(logs);
   }catch(e){
@@ -1177,35 +1210,120 @@ async function openPerformancePanel(){
   }
 }
 
+async function backfillActivityLog(){
+  showToast('Geçmiş veriler taranıyor...');
+  try{
+    const snapshot = await kayitlarRef.where('durum', '==', 'hazir').get();
+    const entries = [];
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      if(!d.hazirZaman) return;
+      entries.push({
+        zaman: Number(d.hazirZaman),
+        urunAdi: d.urunAdi || '',
+        urunKodu: d.urunKodu || '',
+        beden: d.beden || '',
+        adet: Number(d.adet) || 1,
+        kademe: detectKademe({urunAdi: d.urunAdi || '', beden: d.beden || ''})
+      });
+    });
+
+    const chunkSize = 450;
+    for(let i = 0; i < entries.length; i += chunkSize){
+      const chunk = entries.slice(i, i + chunkSize);
+      const batch = db.batch();
+      chunk.forEach(entry => batch.set(db.collection('aktiviteLog').doc(), entry));
+      await batch.commit();
+    }
+
+    showToast(`${entries.length} geçmiş kayıt eklendi`);
+    await loadAndRenderPerformance();
+  }catch(e){
+    showToast('Senkronizasyon başarısız, tekrar deneyin');
+  }
+}
+
 function renderPerformancePanel(logs){
+  currentPerfLogs = logs;
   const panel = document.getElementById('performance-panel');
+  const toggleHtml = `
+    <div class="filter-row" style="margin-bottom:14px;">
+      <button class="filter-chip ${perfViewMode==='gun' ? 'active' : ''}" onclick="switchPerfView('gun')">📅 Bugün</button>
+      <button class="filter-chip ${perfViewMode==='hafta' ? 'active' : ''}" onclick="switchPerfView('hafta')">📆 Bu Hafta</button>
+    </div>
+  `;
+
   if(logs.length === 0){
-    panel.innerHTML = `<div class="empty">Bugün henüz hazırlanan ürün yok.</div>`;
+    panel.innerHTML = toggleHtml + `
+      <div class="empty">${perfViewMode==='gun' ? 'Bugün' : 'Bu hafta'} henüz kayıtlı hazırlanma verisi yok.</div>
+      ${perfViewMode==='gun' ? '<button type="button" class="submit-btn" style="margin-top:10px;" onclick="backfillActivityLog()">🔄 Geçmiş verileri senkronize et</button>' : ''}
+    `;
     return;
   }
 
-  const hours = Array(24).fill(0);
-  logs.forEach(l => {
-    const h = new Date(Number(l.zaman)).getHours();
-    hours[h] += Number(l.adet) || 1;
-  });
-  const maxCount = Math.max(...hours);
-  const totalToday = logs.reduce((s, l) => s + (Number(l.adet) || 1), 0);
-  const peakHour = hours.indexOf(maxCount);
+  const totalCount = logs.reduce((s, l) => s + (Number(l.adet) || 1), 0);
+  let breakdownHtml = '';
+  let peakLabel = '';
 
-  let hourRows = '';
-  for(let h = 0; h < 24; h++){
-    if(hours[h] === 0) continue;
-    const isPeak = hours[h] === maxCount;
-    const barWidth = maxCount > 0 ? Math.round((hours[h] / maxCount) * 100) : 0;
-    hourRows += `
-      <div class="perf-hour-row">
-        <div class="perf-hour-label">${String(h).padStart(2,'0')}:00</div>
-        <div class="perf-hour-track"><div class="perf-hour-fill${isPeak ? ' peak' : ''}" style="width:${barWidth}%;"></div></div>
-        <div class="perf-hour-count">${hours[h]}</div>
-        ${isPeak ? '<span style="font-size:13px;">🏆</span>' : ''}
-      </div>
-    `;
+  if(perfViewMode === 'gun'){
+    const hours = Array(24).fill(0);
+    logs.forEach(l => { hours[new Date(Number(l.zaman)).getHours()] += Number(l.adet) || 1; });
+    const maxCount = Math.max(...hours);
+    const peakHour = hours.indexOf(maxCount);
+    peakLabel = `En yoğun saat: ${String(peakHour).padStart(2,'0')}:00 (${maxCount} ürün)`;
+    for(let h = 0; h < 24; h++){
+      if(hours[h] === 0) continue;
+      const isPeak = hours[h] === maxCount;
+      const barWidth = maxCount > 0 ? Math.round((hours[h] / maxCount) * 100) : 0;
+      breakdownHtml += `
+        <div class="perf-hour-row">
+          <div class="perf-hour-label">${String(h).padStart(2,'0')}:00</div>
+          <div class="perf-hour-track"><div class="perf-hour-fill${isPeak ? ' peak' : ''}" style="width:${barWidth}%;"></div></div>
+          <div class="perf-hour-count">${hours[h]}</div>
+          ${isPeak ? '<span style="font-size:13px;">🏆</span>' : ''}
+        </div>
+      `;
+    }
+  }else{
+    const dayLabels = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
+    const dayBuckets = Array.from({length:7}, () => []);
+    logs.forEach(l => {
+      const jsDay = new Date(Number(l.zaman)).getDay();
+      const idx = jsDay === 0 ? 6 : jsDay - 1;
+      dayBuckets[idx].push(l);
+    });
+    const days = dayBuckets.map(arr => arr.reduce((s,l) => s + (Number(l.adet)||1), 0));
+    const maxCount = Math.max(...days);
+    const peakIdx = days.indexOf(maxCount);
+    peakLabel = maxCount > 0 ? `En iyi gün: ${dayLabels[peakIdx]} (${maxCount} ürün)` : '';
+
+    for(let d = 0; d < 7; d++){
+      if(days[d] === 0) continue;
+      const isPeak = days[d] === maxCount;
+      const barWidth = maxCount > 0 ? Math.round((days[d] / maxCount) * 100) : 0;
+      const isExpanded = expandedDayIndex === d;
+      breakdownHtml += `
+        <div class="perf-hour-row" style="cursor:pointer;" onclick="toggleDayDetail(${d})">
+          <div class="perf-hour-label" style="width:76px;">${dayLabels[d]}</div>
+          <div class="perf-hour-track"><div class="perf-hour-fill${isPeak ? ' peak' : ''}" style="width:${barWidth}%;"></div></div>
+          <div class="perf-hour-count">${days[d]}</div>
+          ${isPeak ? '<span style="font-size:13px;">🏆</span>' : ''}
+          <span style="font-size:10px;color:var(--text-dim);">${isExpanded ? '▲' : '▼'}</span>
+        </div>
+      `;
+      if(isExpanded){
+        const dayProductMap = {};
+        dayBuckets[d].forEach(l => {
+          const key = l.urunAdi || '(isimsiz)';
+          dayProductMap[key] = (dayProductMap[key] || 0) + (Number(l.adet) || 1);
+        });
+        const dayTop = Object.entries(dayProductMap).sort((a,b) => b[1]-a[1]).slice(0, 5);
+        const dayTopHtml = dayTop.map(([name, count]) =>
+          `<div class="item-meta">• ${escapeHtml(name)} — ${count} adet</div>`
+        ).join('') || '<div class="item-meta">Ürün yok</div>';
+        breakdownHtml += `<div style="background:#F7F5F1;border-radius:8px;padding:8px 10px;margin:-2px 0 8px 76px;">${dayTopHtml}</div>`;
+      }
+    }
   }
 
   const productMap = {};
@@ -1218,13 +1336,13 @@ function renderPerformancePanel(logs){
     `<div class="item-meta">${escapeHtml(name)} — <strong>${count}</strong> adet</div>`
   ).join('');
 
-  panel.innerHTML = `
+  panel.innerHTML = toggleHtml + `
     <div style="text-align:center;margin-bottom:14px;">
-      <div style="font-size:26px;font-weight:800;color:var(--navy);">${totalToday}</div>
-      <div style="font-size:12px;color:var(--text-dim);">bugün hazırlanan toplam ürün</div>
-      <div style="font-size:12px;color:var(--green);font-weight:700;margin-top:2px;">En yoğun saat: ${String(peakHour).padStart(2,'0')}:00 (${maxCount} ürün)</div>
+      <div style="font-size:26px;font-weight:800;color:var(--navy);">${totalCount}</div>
+      <div style="font-size:12px;color:var(--text-dim);">${perfViewMode==='gun' ? 'bugün' : 'bu hafta'} hazırlanan toplam ürün</div>
+      ${peakLabel ? `<div style="font-size:12px;color:var(--green);font-weight:700;margin-top:2px;">${peakLabel}</div>` : ''}
     </div>
-    <div style="margin-bottom:14px;">${hourRows}</div>
+    <div style="margin-bottom:14px;">${breakdownHtml}</div>
     <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">En çok hazırlanan ürünler</div>
     ${topProductsHtml || '<div class="empty">—</div>'}
   `;
