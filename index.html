@@ -1152,6 +1152,7 @@ function startActivityListener(){
 }
 
 let perfViewMode = 'gun';
+let selectedPerfDate = null;
 let expandedDayIndex = null;
 let currentPerfLogs = [];
 
@@ -1181,6 +1182,11 @@ async function openPerformancePanel(){
 
 function switchPerfView(mode){
   perfViewMode = mode;
+  if(mode === 'tarih' && !selectedPerfDate){
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    selectedPerfDate = yesterday.toISOString().slice(0,10);
+  }
   loadAndRenderPerformance();
 }
 
@@ -1188,11 +1194,16 @@ async function loadAndRenderPerformance(){
   const panel = document.getElementById('performance-panel');
   panel.innerHTML = `<div class="empty">Yükleniyor...</div>`;
   try{
-    let startMs;
+    let startMs, endMs = null;
     if(perfViewMode === 'gun'){
       const startOfDay = new Date();
       startOfDay.setHours(0,0,0,0);
       startMs = startOfDay.getTime();
+    }else if(perfViewMode === 'tarih'){
+      const d = selectedPerfDate ? new Date(selectedPerfDate) : new Date();
+      d.setHours(0,0,0,0);
+      startMs = d.getTime();
+      endMs = startMs + 24*60*60*1000;
     }else{
       const now = new Date();
       const jsDay = now.getDay();
@@ -1202,12 +1213,19 @@ async function loadAndRenderPerformance(){
       monday.setHours(0,0,0,0);
       startMs = monday.getTime();
     }
-    const snapshot = await db.collection('aktiviteLog').where('zaman', '>=', startMs).get();
+    let query = db.collection('aktiviteLog').where('zaman', '>=', startMs);
+    if(endMs !== null) query = query.where('zaman', '<', endMs);
+    const snapshot = await query.get();
     const logs = snapshot.docs.map(d => d.data());
     renderPerformancePanel(logs);
   }catch(e){
     panel.innerHTML = `<div class="empty">Veri yüklenemedi, tekrar deneyin.</div>`;
   }
+}
+
+function onPerfDateChange(value){
+  selectedPerfDate = value;
+  loadAndRenderPerformance();
 }
 
 async function backfillActivityLog(){
@@ -1219,12 +1237,14 @@ async function backfillActivityLog(){
       const d = doc.data();
       if(!d.hazirZaman) return;
       entries.push({
+        logId: 'backfill-' + doc.id,
         zaman: Number(d.hazirZaman),
         urunAdi: d.urunAdi || '',
         urunKodu: d.urunKodu || '',
         beden: d.beden || '',
         adet: Number(d.adet) || 1,
-        kademe: detectKademe({urunAdi: d.urunAdi || '', beden: d.beden || ''})
+        kademe: detectKademe({urunAdi: d.urunAdi || '', beden: d.beden || ''}),
+        kaynak: 'backfill'
       });
     });
 
@@ -1232,14 +1252,41 @@ async function backfillActivityLog(){
     for(let i = 0; i < entries.length; i += chunkSize){
       const chunk = entries.slice(i, i + chunkSize);
       const batch = db.batch();
-      chunk.forEach(entry => batch.set(db.collection('aktiviteLog').doc(), entry));
+      chunk.forEach(entry => {
+        const { logId, ...data } = entry;
+        batch.set(db.collection('aktiviteLog').doc(logId), data);
+      });
       await batch.commit();
     }
 
-    showToast(`${entries.length} geçmiş kayıt eklendi`);
+    showToast(`${entries.length} kayıt senkronize edildi (kopya oluşmaz)`);
     await loadAndRenderPerformance();
   }catch(e){
     showToast('Senkronizasyon başarısız, tekrar deneyin');
+  }
+}
+
+async function resetPerformanceLog(){
+  if(!confirm('Tüm performans günlüğü (bugüne kadarki tüm hazırlanma kayıtları) silinecek ve sıfırdan başlayacak. Emin misiniz?')) return;
+  const sifre = prompt('Devam etmek için şifreyi girin:');
+  if(sifre === null) return;
+  if(sifre !== '5737'){ showToast('Yanlış şifre'); return; }
+
+  showToast('Temizleniyor...');
+  try{
+    const snapshot = await db.collection('aktiviteLog').get();
+    const ids = snapshot.docs.map(d => d.id);
+    const chunkSize = 450;
+    for(let i = 0; i < ids.length; i += chunkSize){
+      const chunk = ids.slice(i, i + chunkSize);
+      const batch = db.batch();
+      chunk.forEach(id => batch.delete(db.collection('aktiviteLog').doc(id)));
+      await batch.commit();
+    }
+    showToast(`${ids.length} eski kayıt silindi`);
+    await loadAndRenderPerformance();
+  }catch(e){
+    showToast('Sıfırlama başarısız, tekrar deneyin');
   }
 }
 
@@ -1247,16 +1294,20 @@ function renderPerformancePanel(logs){
   currentPerfLogs = logs;
   const panel = document.getElementById('performance-panel');
   const toggleHtml = `
-    <div class="filter-row" style="margin-bottom:14px;">
+    <div class="filter-row" style="margin-bottom:10px;">
       <button class="filter-chip ${perfViewMode==='gun' ? 'active' : ''}" onclick="switchPerfView('gun')">📅 Bugün</button>
       <button class="filter-chip ${perfViewMode==='hafta' ? 'active' : ''}" onclick="switchPerfView('hafta')">📆 Bu Hafta</button>
+      <button class="filter-chip ${perfViewMode==='tarih' ? 'active' : ''}" onclick="switchPerfView('tarih')">📖 Belirli Gün</button>
     </div>
+    ${perfViewMode==='tarih' ? `<input type="date" class="search-box" style="margin-top:0;margin-bottom:14px;" value="${selectedPerfDate || ''}" onchange="onPerfDateChange(this.value)">` : ''}
   `;
+  const emptyLabel = perfViewMode==='gun' ? 'Bugün' : perfViewMode==='hafta' ? 'Bu hafta' : 'Seçtiğiniz günde';
 
   if(logs.length === 0){
     panel.innerHTML = toggleHtml + `
-      <div class="empty">${perfViewMode==='gun' ? 'Bugün' : 'Bu hafta'} henüz kayıtlı hazırlanma verisi yok.</div>
+      <div class="empty">${emptyLabel} henüz kayıtlı hazırlanma verisi yok.</div>
       ${perfViewMode==='gun' ? '<button type="button" class="submit-btn" style="margin-top:10px;" onclick="backfillActivityLog()">🔄 Geçmiş verileri senkronize et</button>' : ''}
+      <div style="text-align:center;margin-top:14px;"><span style="font-size:11px;color:var(--text-dim);text-decoration:underline;cursor:pointer;" onclick="resetPerformanceLog()">Performans verilerini sıfırla</span></div>
     `;
     return;
   }
@@ -1265,7 +1316,7 @@ function renderPerformancePanel(logs){
   let breakdownHtml = '';
   let peakLabel = '';
 
-  if(perfViewMode === 'gun'){
+  if(perfViewMode === 'gun' || perfViewMode === 'tarih'){
     const hours = Array(24).fill(0);
     logs.forEach(l => { hours[new Date(Number(l.zaman)).getHours()] += Number(l.adet) || 1; });
     const maxCount = Math.max(...hours);
@@ -1339,12 +1390,13 @@ function renderPerformancePanel(logs){
   panel.innerHTML = toggleHtml + `
     <div style="text-align:center;margin-bottom:14px;">
       <div style="font-size:26px;font-weight:800;color:var(--navy);">${totalCount}</div>
-      <div style="font-size:12px;color:var(--text-dim);">${perfViewMode==='gun' ? 'bugün' : 'bu hafta'} hazırlanan toplam ürün</div>
+      <div style="font-size:12px;color:var(--text-dim);">${perfViewMode==='gun' ? 'bugün' : perfViewMode==='hafta' ? 'bu hafta' : 'seçilen günde'} hazırlanan toplam ürün</div>
       ${peakLabel ? `<div style="font-size:12px;color:var(--green);font-weight:700;margin-top:2px;">${peakLabel}</div>` : ''}
     </div>
     <div style="margin-bottom:14px;">${breakdownHtml}</div>
     <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">En çok hazırlanan ürünler</div>
     ${topProductsHtml || '<div class="empty">—</div>'}
+    <div style="text-align:center;margin-top:16px;"><span style="font-size:11px;color:var(--text-dim);text-decoration:underline;cursor:pointer;" onclick="resetPerformanceLog()">Performans verilerini sıfırla</span></div>
   `;
 }
 
