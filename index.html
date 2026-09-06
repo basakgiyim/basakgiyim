@@ -1267,10 +1267,16 @@ async function backfillActivityLog(){
 }
 
 async function resetPerformanceLog(){
-  if(!confirm('Tüm performans günlüğü (bugüne kadarki tüm hazırlanma kayıtları) silinecek ve sıfırdan başlayacak. Emin misiniz?')) return;
+  if(!confirm('Tüm performans günlüğü (bugüne kadarki tüm hazırlanma kayıtları) KALICI OLARAK silinecek. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?')) return;
   const sifre = prompt('Devam etmek için şifreyi girin:');
   if(sifre === null) return;
   if(sifre !== '5737'){ showToast('Yanlış şifre'); return; }
+  const onayYazi = prompt('Son adım — emin olduğunuzu göstermek için büyük harflerle "SIFIRLA" yazın:');
+  if(onayYazi === null) return;
+  if(onayYazi.trim().toLocaleUpperCase('tr-TR') !== 'SIFIRLA'){
+    showToast('Yazı eşleşmedi, işlem iptal edildi');
+    return;
+  }
 
   showToast('Temizleniyor...');
   try{
