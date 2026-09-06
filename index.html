@@ -913,20 +913,32 @@ function ageOverlapsIlkokul(ranges){
   });
 }
 
+function getSearchableText(r){
+  return ((r.urunAdi||'') + ' ' + (r.beden||'')).toLocaleLowerCase('tr-TR');
+}
+
+function hasPenye(r){
+  return /\bpenye\b/.test(getSearchableText(r));
+}
+
+function hasDestan(r){
+  return /\bdestan\b/.test(getSearchableText(r));
+}
+
 function detectKademe(r){
-  const text = ((r.urunAdi||'') + ' ' + (r.beden||'')).toLocaleLowerCase('tr-TR');
+  const text = getSearchableText(r);
   if(/\blise/.test(text) || /\bihl/.test(text)) return 'lise';
   if(/\bortaokul/.test(text) || /\borta okul/.test(text) || /\biho\b/.test(text) || /\borta\b/.test(text)) return 'ortaokul';
   if(/\bilkokul/.test(text) || /\bilköğretim/.test(text) || /\bilk\b/.test(text) || text.includes('namık kemal')) return 'ilkokul';
   if(ageOverlapsIlkokul(extractAgeRanges(text))) return 'ilkokul';
-  if(/\bpenye\b/.test(text)) return 'penye';
-  if(/\bdestan\b/.test(text)) return 'destan';
   return 'diger';
 }
 
 function matchesCategory(r, cat){
   if(cat === 'tumu') return true;
   if(cat === 'acil') return !!r.acil;
+  if(cat === 'penye') return hasPenye(r);
+  if(cat === 'destan') return hasDestan(r);
   return detectKademe(r) === cat;
 }
 
@@ -947,6 +959,8 @@ function renderFilterChipsInto(containerId, records, activeFilter, setterName){
   records.forEach(r => {
     counts[detectKademe(r)]++;
     if(r.acil) counts.acil++;
+    if(hasPenye(r)) counts.penye++;
+    if(hasDestan(r)) counts.destan++;
   });
   document.getElementById(containerId).innerHTML = KADEME_KEYS.map(key =>
     `<button class="filter-chip ${activeFilter===key ? 'active' : ''}${key==='acil' ? ' acil-chip' : ''}" onclick="${setterName}('${key}')">${KADEME_LABELS[key]} (${counts[key]})</button>`
