@@ -89,6 +89,38 @@
   .action-btn.del{background:transparent;color:var(--red);border:1.5px solid #E7C9BE;flex:0 0 auto;padding:9px 12px;}
   .action-btn.clear-btn{background:var(--red);color:#fff;}
 
+  .perf-btn{
+    width:58px;
+    height:58px;
+    border-radius:50%;
+    border:none;
+    background:var(--navy);
+    color:#fff;
+    font-size:24px;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .perf-hour-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+  .perf-hour-label{width:44px;font-size:11.5px;font-weight:700;color:var(--text-dim);flex:0 0 auto;}
+  .perf-hour-track{flex:1;background:#F0EEE8;border-radius:6px;overflow:hidden;height:16px;}
+  .perf-hour-fill{height:100%;background:var(--navy);}
+  .perf-hour-fill.peak{background:var(--green);}
+  .perf-hour-count{width:26px;text-align:right;font-size:11.5px;font-weight:800;flex:0 0 auto;}
+
+  #depo-motivasyon{
+    text-align:center;
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--navy);
+    background:#FFF7E8;
+    border:1px solid #F0DDAE;
+    border-radius:20px;
+    padding:6px 10px;
+    margin:-6px 0 14px;
+  }
+
   .search-result-item{
     border:1.5px solid var(--border);
     border-radius:9px;
@@ -313,6 +345,11 @@
       </details>
     </div>
 
+    <div class="card" style="text-align:center;">
+      <button type="button" class="perf-btn" onclick="openPerformancePanel()" title="Performans">📊</button>
+      <div id="performance-panel" style="display:none;text-align:left;margin-top:14px;"></div>
+    </div>
+
     <div class="card">
       <button class="action-btn del" style="width:100%;padding:11px;" id="clear-btn" onclick="clearAllRecords()">⚠️ Tüm kayıtları temizle</button>
     </div>
@@ -320,6 +357,7 @@
 
   <section id="view-depo" style="display:none;">
     <div class="link-hint">Bu ekranı depo telefonunda açık tutun. Wolvox'ta satış yapıldığında liste otomatik güncellenir ve kısa bir ses çalar.</div>
+    <div id="depo-motivasyon">🏆 Bugün hazırlanan: <span id="depo-bugun-sayisi">0</span> ürün</div>
 
     <div class="card">
       <div class="list-title">
@@ -791,7 +829,20 @@ async function submitSale(isAcil){
 async function markReady(idsCsv){
   const ids = idsCsv.split(',');
   const batch = db.batch();
-  ids.forEach(id => batch.update(kayitlarRef.doc(id), {durum:'hazir', hazirZaman: Date.now()}));
+  const now = Date.now();
+  ids.forEach(id => {
+    batch.update(kayitlarRef.doc(id), {durum:'hazir', hazirZaman: now});
+    const rec = allRecords.find(r => r.id === id);
+    const logRef = db.collection('aktiviteLog').doc();
+    batch.set(logRef, {
+      zaman: now,
+      urunAdi: rec ? rec.urunAdi : '',
+      urunKodu: rec ? rec.urunKodu : '',
+      beden: rec ? rec.beden : '',
+      adet: rec ? rec.adet : 1,
+      kademe: rec ? detectKademe(rec) : 'diger'
+    });
+  });
   await batch.commit();
   showToast(ids.length > 1 ? `${ids.length} ürün hazırlandı olarak işaretlendi` : 'Hazırlandı olarak işaretlendi');
 }
@@ -1089,10 +1140,101 @@ function render(){
   firstLoad = false;
 }
 
+function startActivityListener(){
+  const startOfDay = new Date();
+  startOfDay.setHours(0,0,0,0);
+  db.collection('aktiviteLog').where('zaman', '>=', startOfDay.getTime()).onSnapshot(snapshot => {
+    let total = 0;
+    snapshot.forEach(doc => { total += Number(doc.data().adet) || 1; });
+    const el = document.getElementById('depo-bugun-sayisi');
+    if(el) el.textContent = total;
+  });
+}
+
+async function openPerformancePanel(){
+  const panel = document.getElementById('performance-panel');
+  if(panel.style.display === 'block'){
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+  const sifre = prompt('Bu bölüm şifre korumalı. Şifreyi girin:');
+  if(sifre === null) return;
+  if(sifre !== '5737'){
+    showToast('Yanlış şifre');
+    return;
+  }
+  panel.style.display = 'block';
+  panel.innerHTML = `<div class="empty">Yükleniyor...</div>`;
+  try{
+    const startOfDay = new Date();
+    startOfDay.setHours(0,0,0,0);
+    const snapshot = await db.collection('aktiviteLog').where('zaman', '>=', startOfDay.getTime()).get();
+    const logs = snapshot.docs.map(d => d.data());
+    renderPerformancePanel(logs);
+  }catch(e){
+    panel.innerHTML = `<div class="empty">Veri yüklenemedi, tekrar deneyin.</div>`;
+  }
+}
+
+function renderPerformancePanel(logs){
+  const panel = document.getElementById('performance-panel');
+  if(logs.length === 0){
+    panel.innerHTML = `<div class="empty">Bugün henüz hazırlanan ürün yok.</div>`;
+    return;
+  }
+
+  const hours = Array(24).fill(0);
+  logs.forEach(l => {
+    const h = new Date(Number(l.zaman)).getHours();
+    hours[h] += Number(l.adet) || 1;
+  });
+  const maxCount = Math.max(...hours);
+  const totalToday = logs.reduce((s, l) => s + (Number(l.adet) || 1), 0);
+  const peakHour = hours.indexOf(maxCount);
+
+  let hourRows = '';
+  for(let h = 0; h < 24; h++){
+    if(hours[h] === 0) continue;
+    const isPeak = hours[h] === maxCount;
+    const barWidth = maxCount > 0 ? Math.round((hours[h] / maxCount) * 100) : 0;
+    hourRows += `
+      <div class="perf-hour-row">
+        <div class="perf-hour-label">${String(h).padStart(2,'0')}:00</div>
+        <div class="perf-hour-track"><div class="perf-hour-fill${isPeak ? ' peak' : ''}" style="width:${barWidth}%;"></div></div>
+        <div class="perf-hour-count">${hours[h]}</div>
+        ${isPeak ? '<span style="font-size:13px;">🏆</span>' : ''}
+      </div>
+    `;
+  }
+
+  const productMap = {};
+  logs.forEach(l => {
+    const key = l.urunAdi || '(isimsiz)';
+    productMap[key] = (productMap[key] || 0) + (Number(l.adet) || 1);
+  });
+  const topProducts = Object.entries(productMap).sort((a,b) => b[1]-a[1]).slice(0, 6);
+  const topProductsHtml = topProducts.map(([name, count]) =>
+    `<div class="item-meta">${escapeHtml(name)} — <strong>${count}</strong> adet</div>`
+  ).join('');
+
+  panel.innerHTML = `
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:26px;font-weight:800;color:var(--navy);">${totalToday}</div>
+      <div style="font-size:12px;color:var(--text-dim);">bugün hazırlanan toplam ürün</div>
+      <div style="font-size:12px;color:var(--green);font-weight:700;margin-top:2px;">En yoğun saat: ${String(peakHour).padStart(2,'0')}:00 (${maxCount} ürün)</div>
+    </div>
+    <div style="margin-bottom:14px;">${hourRows}</div>
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">En çok hazırlanan ürünler</div>
+    ${topProductsHtml || '<div class="empty">—</div>'}
+  `;
+}
+
 (function init(){
   const hash = window.location.hash.replace('#','');
   setView(hash === 'depo' ? 'depo' : 'magaza');
   startRealtimeListener();
+  startActivityListener();
 })();
 </script>
 
