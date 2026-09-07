@@ -102,6 +102,22 @@
     align-items:center;
     justify-content:center;
   }
+  .ciro-btn{
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    border:none;
+    background:#D9D5CC;
+    color:#6B6558;
+    font-size:9px;
+    font-weight:800;
+    letter-spacing:0.3px;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    opacity:0.75;
+  }
   .perf-hour-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
   .perf-hour-label{width:44px;font-size:11.5px;font-weight:700;color:var(--text-dim);flex:0 0 auto;}
   .perf-hour-track{flex:1;background:#F0EEE8;border-radius:6px;overflow:hidden;height:16px;}
@@ -352,6 +368,11 @@
     <div class="card" style="text-align:center;">
       <button type="button" class="perf-btn" onclick="openPerformancePanel()" title="Performans">📊</button>
       <div id="performance-panel" style="display:none;text-align:left;margin-top:14px;"></div>
+    </div>
+
+    <div class="card" style="text-align:center;padding:12px;">
+      <button type="button" class="ciro-btn" onclick="openCiroPanel()" title="Ciro">B&G</button>
+      <div id="ciro-panel" style="display:none;text-align:left;margin-top:14px;"></div>
     </div>
   </section>
 
@@ -1403,6 +1424,193 @@ function renderPerformancePanel(logs){
     <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">En çok hazırlanan ürünler</div>
     ${topProductsHtml || '<div class="empty">—</div>'}
     <div style="text-align:center;margin-top:16px;"><span style="font-size:11px;color:var(--text-dim);text-decoration:underline;cursor:pointer;" onclick="resetPerformanceLog()">Performans verilerini sıfırla</span></div>
+  `;
+}
+
+function formatTL(v){
+  return new Intl.NumberFormat('tr-TR', {style:'currency', currency:'TRY', maximumFractionDigits:0}).format(v || 0);
+}
+
+let ciroViewMode = 'gun';
+let currentCiroLogs = [];
+let selectedCiroMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let selectedCiroDate = null;
+
+async function openCiroPanel(){
+  const panel = document.getElementById('ciro-panel');
+  if(panel.style.display === 'block'){
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+  const sifre = prompt('Bu bölüm şifre korumalı. Şifreyi girin:');
+  if(sifre === null) return;
+  if(sifre !== 'senol5737'){
+    showToast('Yanlış şifre');
+    return;
+  }
+  panel.style.display = 'block';
+  ciroViewMode = 'gun';
+  await loadAndRenderCiro();
+}
+
+function switchCiroView(mode){
+  ciroViewMode = mode;
+  if(mode === 'tarih' && !selectedCiroDate){
+    selectedCiroDate = new Date().toISOString().slice(0,10);
+  }
+  loadAndRenderCiro();
+}
+
+function changeCiroMonth(delta){
+  selectedCiroMonth = new Date(selectedCiroMonth.getFullYear(), selectedCiroMonth.getMonth() + delta, 1);
+  loadAndRenderCiro();
+}
+
+function onCiroDateChange(value){
+  selectedCiroDate = value;
+  loadAndRenderCiro();
+}
+
+async function loadAndRenderCiro(){
+  const panel = document.getElementById('ciro-panel');
+  panel.innerHTML = `<div class="empty">Yükleniyor...</div>`;
+  try{
+    let startMs, endMs = null;
+    const now = new Date();
+    if(ciroViewMode === 'gun'){
+      const d = new Date(now); d.setHours(0,0,0,0);
+      startMs = d.getTime();
+    }else if(ciroViewMode === 'hafta'){
+      const jsDay = now.getDay();
+      const diffToMonday = (jsDay === 0 ? -6 : 1 - jsDay);
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      monday.setHours(0,0,0,0);
+      startMs = monday.getTime();
+    }else if(ciroViewMode === 'tarih'){
+      const d = selectedCiroDate ? new Date(selectedCiroDate) : new Date();
+      d.setHours(0,0,0,0);
+      startMs = d.getTime();
+      endMs = startMs + 24*60*60*1000;
+    }else{
+      const firstOfMonth = new Date(selectedCiroMonth.getFullYear(), selectedCiroMonth.getMonth(), 1);
+      startMs = firstOfMonth.getTime();
+      endMs = new Date(selectedCiroMonth.getFullYear(), selectedCiroMonth.getMonth() + 1, 1).getTime();
+    }
+    let query = db.collection('ciroLog').where('zaman', '>=', startMs);
+    if(endMs !== null) query = query.where('zaman', '<', endMs);
+    const snapshot = await query.get();
+    const logs = snapshot.docs.map(d => d.data());
+    renderCiroPanel(logs);
+  }catch(e){
+    panel.innerHTML = `<div class="empty">Veri yüklenemedi, tekrar deneyin.</div>`;
+  }
+}
+
+function renderCiroPanel(logs){
+  currentCiroLogs = logs;
+  const panel = document.getElementById('ciro-panel');
+  const ayLabelTr = selectedCiroMonth.toLocaleDateString('tr-TR', {month:'long', year:'numeric'});
+  const toggleHtml = `
+    <div class="filter-row" style="margin-bottom:10px;">
+      <button class="filter-chip ${ciroViewMode==='gun' ? 'active' : ''}" onclick="switchCiroView('gun')">📅 Bugün</button>
+      <button class="filter-chip ${ciroViewMode==='hafta' ? 'active' : ''}" onclick="switchCiroView('hafta')">📆 Bu Hafta</button>
+      <button class="filter-chip ${ciroViewMode==='ay' ? 'active' : ''}" onclick="switchCiroView('ay')">🗓️ Ay</button>
+      <button class="filter-chip ${ciroViewMode==='tarih' ? 'active' : ''}" onclick="switchCiroView('tarih')">📖 Belirli Gün</button>
+    </div>
+    ${ciroViewMode==='ay' ? `
+      <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px;">
+        <button type="button" class="filter-chip" onclick="changeCiroMonth(-1)">◀</button>
+        <div style="font-size:13px;font-weight:700;color:var(--navy);min-width:120px;text-align:center;text-transform:capitalize;">${ayLabelTr}</div>
+        <button type="button" class="filter-chip" onclick="changeCiroMonth(1)">▶</button>
+      </div>
+    ` : ''}
+    ${ciroViewMode==='tarih' ? `<input type="date" class="search-box" style="margin-top:0;margin-bottom:14px;" value="${selectedCiroDate || ''}" onchange="onCiroDateChange(this.value)">` : ''}
+  `;
+  const emptyLabel = ciroViewMode==='gun' ? 'Bugün' : ciroViewMode==='hafta' ? 'Bu hafta' : ciroViewMode==='tarih' ? 'Seçtiğiniz günde' : ayLabelTr + ' ayında';
+
+  if(logs.length === 0){
+    panel.innerHTML = toggleHtml + `<div class="empty">${emptyLabel} henüz kaydedilmiş ciro verisi yok.</div>`;
+    return;
+  }
+
+  const totalTutar = logs.reduce((s, l) => s + (Number(l.tutar) || 0), 0);
+  let breakdownHtml = '';
+  let peakLabel = '';
+
+  if(ciroViewMode === 'gun' || ciroViewMode === 'tarih'){
+    const hours = Array(24).fill(0);
+    logs.forEach(l => { hours[new Date(Number(l.zaman)).getHours()] += Number(l.tutar) || 0; });
+    const maxVal = Math.max(...hours);
+    const peakHour = hours.indexOf(maxVal);
+    if(maxVal > 0) peakLabel = `En yüksek ciro: ${String(peakHour).padStart(2,'0')}:00 (${formatTL(maxVal)})`;
+    for(let h = 0; h < 24; h++){
+      if(hours[h] === 0) continue;
+      const isPeak = hours[h] === maxVal;
+      const barWidth = maxVal > 0 ? Math.round((hours[h] / maxVal) * 100) : 0;
+      breakdownHtml += `
+        <div class="perf-hour-row">
+          <div class="perf-hour-label">${String(h).padStart(2,'0')}:00</div>
+          <div class="perf-hour-track"><div class="perf-hour-fill${isPeak ? ' peak' : ''}" style="width:${barWidth}%;"></div></div>
+          <div class="perf-hour-count" style="width:auto;">${formatTL(hours[h])}</div>
+        </div>
+      `;
+    }
+  }else if(ciroViewMode === 'hafta'){
+    const dayLabels = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
+    const days = Array(7).fill(0);
+    logs.forEach(l => {
+      const jsDay = new Date(Number(l.zaman)).getDay();
+      const idx = jsDay === 0 ? 6 : jsDay - 1;
+      days[idx] += Number(l.tutar) || 0;
+    });
+    const maxVal = Math.max(...days);
+    const peakIdx = days.indexOf(maxVal);
+    if(maxVal > 0) peakLabel = `En iyi gün: ${dayLabels[peakIdx]} (${formatTL(maxVal)})`;
+    for(let d = 0; d < 7; d++){
+      if(days[d] === 0) continue;
+      const isPeak = days[d] === maxVal;
+      const barWidth = maxVal > 0 ? Math.round((days[d] / maxVal) * 100) : 0;
+      breakdownHtml += `
+        <div class="perf-hour-row">
+          <div class="perf-hour-label" style="width:76px;">${dayLabels[d]}</div>
+          <div class="perf-hour-track"><div class="perf-hour-fill${isPeak ? ' peak' : ''}" style="width:${barWidth}%;"></div></div>
+          <div class="perf-hour-count" style="width:auto;">${formatTL(days[d])}</div>
+        </div>
+      `;
+    }
+  }else{
+    const gunSayisi = new Date(selectedCiroMonth.getFullYear(), selectedCiroMonth.getMonth()+1, 0).getDate();
+    const days = Array(gunSayisi).fill(0);
+    logs.forEach(l => {
+      const dt = new Date(Number(l.zaman));
+      days[dt.getDate()-1] += Number(l.tutar) || 0;
+    });
+    const maxVal = Math.max(...days);
+    const peakIdx = days.indexOf(maxVal);
+    if(maxVal > 0) peakLabel = `En iyi gün: ${peakIdx+1}. gün (${formatTL(maxVal)})`;
+    for(let d = 0; d < gunSayisi; d++){
+      if(days[d] === 0) continue;
+      const isPeak = days[d] === maxVal;
+      const barWidth = maxVal > 0 ? Math.round((days[d] / maxVal) * 100) : 0;
+      breakdownHtml += `
+        <div class="perf-hour-row">
+          <div class="perf-hour-label">${d+1}. gün</div>
+          <div class="perf-hour-track"><div class="perf-hour-fill${isPeak ? ' peak' : ''}" style="width:${barWidth}%;"></div></div>
+          <div class="perf-hour-count" style="width:auto;">${formatTL(days[d])}</div>
+        </div>
+      `;
+    }
+  }
+
+  panel.innerHTML = toggleHtml + `
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:24px;font-weight:800;color:var(--navy);">${formatTL(totalTutar)}</div>
+      <div style="font-size:12px;color:var(--text-dim);">${emptyLabel.toLocaleLowerCase('tr-TR')} toplam ciro</div>
+      ${peakLabel ? `<div style="font-size:12px;color:var(--green);font-weight:700;margin-top:2px;">${peakLabel}</div>` : ''}
+    </div>
+    <div>${breakdownHtml}</div>
   `;
 }
 
