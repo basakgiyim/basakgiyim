@@ -673,7 +673,9 @@ function showToast(msg){
 
 function fmtTime(ts){
   const d = new Date(ts);
-  return d.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
+  const tarih = d.toLocaleDateString('tr-TR', {day:'2-digit', month:'short'});
+  const saat = d.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
+  return `${tarih} ${saat}`;
 }
 
 function playBell(){
