@@ -763,11 +763,15 @@ function requestWolvoxLookup(query){
 function stockResultCard(p){
   const stokSayi = Number(p.stok) || 0;
   const renkli = stokSayi > 0 ? 'var(--green)' : 'var(--red)';
+  const fiyatHtml = (p.fiyat !== null && p.fiyat !== undefined)
+    ? `<div style="margin-top:4px;font-size:14px;font-weight:700;color:var(--text);">${Number(p.fiyat).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2})} ₺</div>`
+    : '';
   return `
     <div class="item st-hazir" style="margin-bottom:10px;">
       <div class="item-name">${escapeHtml(p.urunAdi || '—')}</div>
       <div class="item-meta">${escapeHtml(p.urunKodu || '—')} ${p.beden ? '· ' + escapeHtml(p.beden) : ''} ${p.renk ? '· ' + escapeHtml(p.renk) : ''}</div>
       <div style="margin-top:10px;font-size:15px;font-weight:800;color:${renkli};">${stokSayi} adet stokta</div>
+      ${fiyatHtml}
     </div>
   `;
 }
